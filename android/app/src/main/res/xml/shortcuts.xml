@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FR-19: 決まったショートカット。extra の名前と値は ui/Infra.kt の Routes と同じにする。 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_play"
+        android:shortcutId="newPlay"
+        android:shortcutLongLabel="@string/shortcut_play_long"
+        android:shortcutShortLabel="@string/shortcut_play_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="io.github.takosasidev.boxledger.MainActivity"
+            android:targetPackage="io.github.takosasidev.boxledger">
+            <extra
+                android:name="io.github.takosasidev.boxledger.DESTINATION"
+                android:value="newPlay" />
+        </intent>
+    </shortcut>
+</shortcuts>

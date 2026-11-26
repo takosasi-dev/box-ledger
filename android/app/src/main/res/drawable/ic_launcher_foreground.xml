@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ふたの付いた箱と、台帳の 3 本の線。自分で描いた図形だけ。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 箱の本体 -->
+    <path
+        android:fillColor="#F4E9D8"
+        android:pathData="M34,48h40v26h-40z" />
+    <!-- ふた -->
+    <path
+        android:fillColor="#F5C518"
+        android:pathData="M31,36h46v12h-46z" />
+    <!-- 台帳の線 -->
+    <path
+        android:fillColor="#3B2A55"
+        android:pathData="M40,54h28v3h-28z M40,60h28v3h-28z M40,66h18v3h-18z" />
+</vector>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ショートカットのアイコン。箱と「＋」。自分で描いた図形だけ。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#4B367C"
+        android:pathData="M3,5h18v4h-18z M5,11h14v9h-14z" />
+    <path
+        android:fillColor="#F5C518"
+        android:pathData="M11,12h2v3h3v2h-3v3h-2v-3h-3v-2h3z" />
+</vector>

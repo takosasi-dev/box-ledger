@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 画面の中の文は Compose 側に日本語で書いている。ここには OS から参照される文字だけを置く。 -->
+<resources>
+    <string name="app_name">BoxLedger</string>
+    <string name="shortcut_play_short">プレイを記録</string>
+    <string name="shortcut_play_long">新しいプレイを記録する</string>
+    <string name="widget_label">貸出と未プレイ</string>
+    <string name="widget_description">貸出中のゲームの返却予定と、しばらく遊んでいないゲームを並べます</string>
+</resources>
