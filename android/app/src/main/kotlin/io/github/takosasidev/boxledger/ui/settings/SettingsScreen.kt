@@ -1,6 +1,32 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.settings
+
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Celebration
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Sell
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.takosasidev.boxledger.ui.components.Group
+import io.github.takosasidev.boxledger.ui.components.GroupItem
+import io.github.takosasidev.boxledger.ui.components.LeadingIcon
+import io.github.takosasidev.boxledger.ui.components.groupListItemColors
+import io.github.takosasidev.boxledger.ui.theme.colorTones
 
 import android.Manifest
 import android.app.KeyguardManager
@@ -74,11 +100,13 @@ import io.github.takosasidev.boxledger.ui.components.Stepper
 import io.github.takosasidev.boxledger.ui.components.SubScreen
 import io.github.takosasidev.boxledger.ui.theme.ColorChoices
 
+/** 頭の丸いアイコン・題・説明・右のスイッチの行。 */
 @Composable
-private fun SwitchRow(title: String, body: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title)
+private fun SwitchRow(icon: ImageVector, title: String, body: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        LeadingIcon(icon)
+        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
             if (body != null) Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
@@ -86,27 +114,36 @@ private fun SwitchRow(title: String, body: String?, checked: Boolean, enabled: B
 }
 
 @Composable
-private fun <T> Choice(title: String, choices: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Text(title)
+private fun <T> Choice(icon: ImageVector, title: String, choices: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            LeadingIcon(icon)
+            Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
+        }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             choices.forEachIndexed { index, (value, label) ->
-                SegmentedButton(selected = selected == value, onClick = { onSelect(value) }, shape = SegmentedButtonDefaults.itemShape(index, choices.size)) {
-                    Text(label)
-                }
+                SegmentedButton(
+                    selected = selected == value,
+                    onClick = { onSelect(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index, choices.size),
+                    // チェックの印は出さない(選んだ物は地の色で分かる。3 つ並ぶと文字が欠けるため)
+                    icon = {},
+                ) { Text(label, maxLines = 1) }
             }
         }
     }
 }
 
 @Composable
-private fun LinkRow(title: String, body: String, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        headlineContent = { Text(title) },
-        supportingContent = { Text(body) },
-        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-    )
+private fun LinkRow(icon: ImageVector, title: String, body: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        LeadingIcon(icon)
+        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 /** 設定(FR-20 / FR-21 / FR-22 / FR-24 と、未プレイの提案・通知の許可)。 */
@@ -121,72 +158,99 @@ fun SettingsScreen(vm: LedgerViewModel, library: Library, onOpenTags: () -> Unit
     val deviceSecure = remember { context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true }
     val excluded = library.games.filter { it.excludeFromSuggestion }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("設定") }) }) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            SectionHeader("データ")
-            LinkRow("ジャンルタグ", "${library.genreTags.size} 件。追加・名前と色の変更・削除", onOpenTags)
-            LinkRow("バックアップと復元", "zip への書き出し、ほかの端末からの取り込み、自動バックアップ", onOpenBackup)
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = { LargeFlexibleTopAppBar(title = { Text("設定") }, scrollBehavior = scrollBehavior) },
+    ) { padding ->
+        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 24.dp)) {
+            Group(
+                "データ",
+                { LinkRow(Icons.Outlined.Sell, "ジャンルタグ", "${library.genreTags.size} 件。追加・名前と色の変更・削除", onOpenTags) },
+                { LinkRow(Icons.Outlined.Backup, "バックアップと復元", "zip への書き出し、ほかの端末からの取り込み、自動バックアップ", onOpenBackup) },
+            )
 
-            SectionHeader("見た目")
-            SwitchRow(
-                "壁紙の色に合わせる",
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) "Material You の配色を使います" else "この端末(Android 11 以下)では使えません。下の色を使います",
-                checked = s.themeColorMode == ThemeColorMode.DYNAMIC,
-            ) { on -> change { it.copy(themeColorMode = if (on) ThemeColorMode.DYNAMIC else ThemeColorMode.MANUAL) } }
-            if (s.themeColorMode == ThemeColorMode.MANUAL || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                Text("テーマの色", Modifier.padding(horizontal = 16.dp))
-                ColorRow(s.manualThemeColor, { argb -> change { it.copy(manualThemeColor = argb) } }, Modifier.padding(horizontal = 12.dp))
-            }
-            Choice("ダークモード", listOf(DarkModeMode.SYSTEM to "端末に合わせる", DarkModeMode.LIGHT to "ライト", DarkModeMode.DARK to "ダーク"), s.darkModeMode) { v ->
-                change { it.copy(darkModeMode = v) }
-            }
-            Choice("一覧の最初の表示", listOf(ViewMode.GRID to "グリッド(箱の写真)", ViewMode.LIST to "リスト"), s.defaultViewMode) { v ->
-                vm.viewMode.value = null
-                change { it.copy(defaultViewMode = v) }
-            }
-            SwitchRow("一覧に拡張も出す", "切ると、拡張は本体の画面にだけ出します", s.showExpansionsInList) { on -> change { it.copy(showExpansionsInList = on) } }
-            SwitchRow("記録したときの紙吹雪", "勝者を決めてプレイ記録を保存したときに流します", s.celebrationEnabled) { on -> change { it.copy(celebrationEnabled = on) } }
+            Group(
+                "見た目",
+                {
+                    SwitchRow(
+                        Icons.Outlined.Palette,
+                        "壁紙の色に合わせる",
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) "Material You の配色を使います" else "この端末(Android 11 以下)では使えません。下の色を使います",
+                        checked = s.themeColorMode == ThemeColorMode.DYNAMIC,
+                    ) { on -> change { it.copy(themeColorMode = if (on) ThemeColorMode.DYNAMIC else ThemeColorMode.MANUAL) } }
+                    if (s.themeColorMode == ThemeColorMode.MANUAL || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                        Text("テーマの色", Modifier.padding(start = 72.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ColorRow(s.manualThemeColor, { argb -> change { it.copy(manualThemeColor = argb) } }, Modifier.padding(start = 64.dp, end = 12.dp, bottom = 12.dp))
+                    }
+                },
+                {
+                    Choice(Icons.Outlined.DarkMode, "ダークモード", listOf(DarkModeMode.SYSTEM to "端末と同じ", DarkModeMode.LIGHT to "ライト", DarkModeMode.DARK to "ダーク"), s.darkModeMode) { v ->
+                        change { it.copy(darkModeMode = v) }
+                    }
+                },
+                {
+                    Choice(Icons.Outlined.GridView, "一覧の最初の表示", listOf(ViewMode.GRID to "グリッド(箱の写真)", ViewMode.LIST to "リスト"), s.defaultViewMode) { v ->
+                        vm.viewMode.value = null
+                        change { it.copy(defaultViewMode = v) }
+                    }
+                },
+                { SwitchRow(Icons.Outlined.Extension, "一覧に拡張も出す", "切ると、拡張は本体の画面にだけ出します", s.showExpansionsInList) { on -> change { it.copy(showExpansionsInList = on) } } },
+                { SwitchRow(Icons.Outlined.Celebration, "記録したときの紙吹雪", "勝者を決めてプレイ記録を保存したときに流します", s.celebrationEnabled) { on -> change { it.copy(celebrationEnabled = on) } } },
+            )
 
-            SectionHeader("未プレイの提案")
-            Stepper("遊んでいない日数", s.unplayedSuggestionThresholdDays, 10..730, "日以上", step = 10) { v ->
-                change { it.copy(unplayedSuggestionThresholdDays = v) }
-            }
-            if (excluded.isNotEmpty()) {
-                Text("提案に出さないゲーム", Modifier.padding(start = 16.dp, top = 8.dp), style = MaterialTheme.typography.bodySmall)
-                excluded.forEach { game ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(game.title, Modifier.weight(1f), maxLines = 1)
-                        TextButton(onClick = { vm.act { saveGame(game.copy(excludeFromSuggestion = false)) } }) { Text("提案に戻す") }
+            Group("未プレイの提案", {
+                Stepper("遊んでいない日数", s.unplayedSuggestionThresholdDays, 10..730, "日以上", step = 10, icon = Icons.Outlined.HourglassEmpty) { v ->
+                    change { it.copy(unplayedSuggestionThresholdDays = v) }
+                }
+                if (excluded.isNotEmpty()) {
+                    Text("提案に出さないゲーム", Modifier.padding(start = 72.dp, top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    excluded.forEach { game ->
+                        Row(Modifier.fillMaxWidth().padding(start = 72.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(game.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            TextButton(onClick = { vm.act { saveGame(game.copy(excludeFromSuggestion = false)) } }) { Text("提案に戻す") }
+                        }
                     }
                 }
-            }
+            })
 
-            SectionHeader("返却のお知らせ")
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (notificationsOn) "通知は許可されています。返却予定日の前日と当日の朝 9 時ごろにお知らせします。" else "通知が許可されていないので、返却のお知らせは届きません。",
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (!notificationsOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    OutlinedButton(onClick = { askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("許可する") }
+            Group("返却のお知らせ", {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    LeadingIcon(if (notificationsOn) Icons.Outlined.Notifications else Icons.Outlined.NotificationsOff)
+                    Text(
+                        if (notificationsOn) "通知は許可されています。返却予定日の前日と当日の朝 9 時ごろにお知らせします。" else "通知が許可されていないので、返却のお知らせは届きません。",
+                        Modifier.weight(1f).padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (!notificationsOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        FilledTonalButton(onClick = { askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("許可する") }
+                    }
                 }
-            }
+            })
 
-            SectionHeader("プライバシー")
-            SwitchRow(
-                "アプリロック",
-                if (deviceSecure) "開くときに、端末のロック解除(指紋・顔・PIN など)を求めます" else "端末に画面ロックが設定されていないので、使えません",
-                checked = s.appLockEnabled,
-                enabled = deviceSecure || s.appLockEnabled,
-            ) { on -> change { it.copy(appLockEnabled = on) } }
+            Group("プライバシー", {
+                SwitchRow(
+                    Icons.Outlined.Lock,
+                    "アプリロック",
+                    if (deviceSecure) "開くときに、端末のロック解除(指紋・顔・PIN など)を求めます" else "端末に画面ロックが設定されていないので、使えません",
+                    checked = s.appLockEnabled,
+                    enabled = deviceSecure || s.appLockEnabled,
+                ) { on -> change { it.copy(appLockEnabled = on) } }
+            })
 
-            SectionHeader("このアプリについて")
-            Text(
-                "BoxLedger ${BackupManager.appVersionName(context)}\nデータはこの端末の中だけに保存します。通信はしません(インターネットの権限がありません)。",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+            Group("このアプリについて", {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    LeadingIcon(Icons.Outlined.Info)
+                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                        Text("BoxLedger ${BackupManager.appVersionName(context)}", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "データはこの端末の中だけに保存します。通信はしません(インターネットの権限がありません)。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            })
         }
     }
 }
@@ -207,17 +271,28 @@ fun TagsScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit) {
             }) { Icon(Icons.Filled.Add, contentDescription = "タグを追加") }
         },
     ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        LazyColumn(
+            Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             if (library.genreTags.isEmpty()) item { Text("タグがありません。右下の ＋ から作れます。", Modifier.padding(16.dp)) }
-            items(library.genreTags, key = { it.uuid }) { tag ->
+            itemsIndexed(library.genreTags, key = { _, it -> it.uuid }) { index, tag ->
                 val used = library.games.count { tag.uuid in it.genreTagUuids }
-                ListItem(
-                    modifier = Modifier.clickable { editing = tag },
-                    leadingContent = { Box(Modifier.size(28.dp).clip(CircleShape).background(Color(tag.colorArgb))) },
-                    headlineContent = { Text(tag.name) },
-                    supportingContent = { Text("$used 件のゲームに付いています") },
-                    trailingContent = { IconButton(onClick = { deleting = tag }) { Icon(Icons.Filled.Delete, contentDescription = "${tag.name} を削除") } },
-                )
+                val (background, foreground) = colorTones(Color(tag.colorArgb))
+                GroupItem(index, library.genreTags.size, onClick = { editing = tag }) {
+                    ListItem(
+                        colors = groupListItemColors(),
+                        leadingContent = {
+                            Box(Modifier.size(40.dp).clip(CircleShape).background(background), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Outlined.Sell, contentDescription = null, tint = foreground, modifier = Modifier.size(20.dp))
+                            }
+                        },
+                        headlineContent = { Text(tag.name) },
+                        supportingContent = { Text("$used 件のゲームに付いています") },
+                        trailingContent = { IconButton(onClick = { deleting = tag }) { Icon(Icons.Filled.Delete, contentDescription = "${tag.name} を削除") } },
+                    )
+                }
             }
         }
     }

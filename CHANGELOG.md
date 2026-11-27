@@ -4,7 +4,14 @@
 
 ## [Unreleased]
 
+### Changed
+- Android 版の画面を Material 3 Expressive で作り直した(大きな見出し、まとまったリスト、淡い地のアイコン)。material3 は 1.5.0-alpha12
+
+### Fixed
+- Android 版の下のナビの「コレクション」が、幅 411dp で切れていた
+
 ### Added
+- Android 版の画面を PC の上で画像にするテスト(`gradlew testDebugUnitTest -Pshots`。Roborazzi と Robolectric)
 - Android 版(`android/`)
   - ゲームの登録・編集・削除・アーカイブ、箱の写真、ジャンルタグ、5 段階の評価、ウィッシュリスト
   - 拡張の管理(本体にぶら下げる。プレイ記録で使った拡張を選ぶ)、外貨での購入の記録

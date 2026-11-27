@@ -82,7 +82,10 @@ fun AppLockGate(enabled: Boolean, content: @Composable () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+            // 記号は淡い丸の上に置く(大きな記号だけが浮かないように)
+            Surface(shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.padding(30.dp).size(52.dp))
+            }
             Text("ロックされています", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 16.dp))
             Text(
                 "端末のロックを解除すると、コレクションを表示します。",

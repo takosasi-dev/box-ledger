@@ -1,8 +1,18 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.takosasidev.boxledger.ui.settings
 
 import android.net.Uri
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import io.github.takosasidev.boxledger.ui.components.GroupItem
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -148,12 +158,13 @@ fun BackupScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit) {
 
     SubScreen("バックアップと復元", onBack, snackbar = snackbar) { padding ->
         Column(
-            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             SectionHeader("書き出す")
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("ゲーム・プレイヤー・プレイ記録・貸し出し・設定・箱の写真を 1 つの zip にします。", style = MaterialTheme.typography.bodySmall)
+            GroupItem(0, 1) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ゲーム・プレイヤー・プレイ記録・貸し出し・設定・箱の写真を 1 つの zip にします。", style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -164,26 +175,36 @@ fun BackupScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(enabled = !busy, onClick = { createBackup.launch(BackupManager.manualFileName()) }) { Text("zip に書き出す") }
+                Button(enabled = !busy, onClick = { createBackup.launch(BackupManager.manualFileName()) }) {
+                    Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("zip に書き出す", Modifier.padding(start = 8.dp))
+                }
+            }
             }
 
             SectionHeader("読み込む")
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            GroupItem(0, if (preimports.isNotEmpty()) 2 else 1) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "ほかの端末で書き出した zip を選びます。足すだけの「追加取り込み」と、全部を入れ替える「全置換」を選べます。" +
                         "どちらも、直前の状態をアプリの中に自動で残します。",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
-                OutlinedButton(enabled = !busy, onClick = { openBackup.launch(arrayOf(BackupManager.ZIP_MIME, "application/octet-stream")) }) {
-                    Text("zip を選んで読み込む")
+                FilledTonalButton(enabled = !busy, onClick = { openBackup.launch(arrayOf(BackupManager.ZIP_MIME, "application/octet-stream")) }) {
+                    Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("zip を選んで読み込む", Modifier.padding(start = 8.dp))
                 }
+            }
             }
 
             if (preimports.isNotEmpty()) {
-                SectionHeader("取り込みの前の状態に戻す")
+                GroupItem(1, 2) {
+                Column(Modifier.padding(vertical = 12.dp)) {
+                Text("取り込みの前の状態に戻す", style = MaterialTheme.typography.titleSmallEmphasized, modifier = Modifier.padding(horizontal = 16.dp))
                 Text(
                     "取り込みの直前に自動で残した状態です(新しい 3 件まで)。選ぶと、今のデータをその時の状態に入れ替えます。",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
                 preimports.forEach { file ->
@@ -191,12 +212,16 @@ fun BackupScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit) {
                         Text(StampFmt.format(java.time.Instant.ofEpochMilli(file.lastModified())) + " の状態に戻す")
                     }
                 }
+                }
+                }
             }
 
             SectionHeader("自動バックアップ")
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("アプリを開いたときに自動で取る")
+            GroupItem(0, 1) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("アプリを開いたときに自動で取る", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "前のバックアップから決めた日数が過ぎていたら、開いたときに保存先へ書き出します(パスワードなし)。",
                         style = MaterialTheme.typography.bodySmall,
@@ -226,6 +251,8 @@ fun BackupScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit) {
             }
             autoError?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+            }
+            }
             }
         }
     }

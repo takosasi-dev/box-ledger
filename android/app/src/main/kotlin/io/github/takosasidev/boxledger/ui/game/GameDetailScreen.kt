@@ -1,6 +1,35 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.takosasidev.boxledger.ui.game
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.takosasidev.boxledger.core.model.LendingRecord
+import io.github.takosasidev.boxledger.ui.components.GroupItem
+import io.github.takosasidev.boxledger.ui.components.LeadingIcon
+import io.github.takosasidev.boxledger.ui.components.PlayerAvatar
+import io.github.takosasidev.boxledger.ui.components.groupListItemColors
+import io.github.takosasidev.boxledger.ui.theme.LocalStatusColors
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,6 +92,26 @@ fun sessionSummary(library: Library, session: PlaySession): String {
         session.durationMinutes?.let(Format::duration),
         if (winners.isEmpty()) null else "勝ち: ${winners.joinToString("、")}",
     ).joinToString(" ・ ")
+}
+
+/** 返却予定の文字の色。超過は危険の色、今日・明日は注意の色(文字でも「超過」「今日まで」と書く)。 */
+@Composable
+fun returnColor(lending: LendingRecord, today: LocalDate): Color {
+    val due = lending.expectedReturnAt ?: return MaterialTheme.colorScheme.onSurfaceVariant
+    return when {
+        due.isBefore(today) -> MaterialTheme.colorScheme.error
+        !due.isAfter(today.plusDays(1)) -> LocalStatusColors.current.warn
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+}
+
+/** 統計の 1 マス。ラベルは小さく、数は大きく。 */
+@Composable
+private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier.padding(horizontal = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleLargeEmphasized, maxLines = 1)
+    }
 }
 
 /** ゲームの詳細(FR-07 / FR-09 / FR-23 / FR-26 / FR-28)。 */
@@ -131,14 +180,19 @@ fun GameDetailScreen(
             }
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            GameThumb(game, Modifier.fillMaxWidth().padding(horizontal = 16.dp).aspectRatio(1.6f), reqPx = 1024)
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(game.title, style = MaterialTheme.typography.headlineSmall)
+        Column(
+            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            val tone = game.genreTagUuids.firstNotNullOfOrNull { id -> library.genreTags.firstOrNull { it.uuid == id } }?.let { Color(it.colorArgb) }
+            GameThumb(game, Modifier.fillMaxWidth().aspectRatio(1.6f), reqPx = 1024, corner = 28.dp, tone = tone)
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(game.title, style = MaterialTheme.typography.headlineSmallEmphasized)
                 if (parent != null) {
                     Text(
                         "「${parent.title}」の拡張",
                         color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.clickable { onOpenGame(parent.uuid) }.padding(vertical = 6.dp),
                     )
                 }
@@ -146,98 +200,176 @@ fun GameDetailScreen(
                     "ウィッシュリスト".takeIf { game.status == GameStatus.WISHLIST },
                     "アーカイブ済み".takeIf { game.isArchived },
                 ).joinToString(" ・ ")
-                if (state.isNotEmpty()) Text(state, color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.labelLarge)
-                val range = GameFilter.playerRange(library, game)
-                val spec = listOfNotNull(
-                    Format.players(game.minPlayers, game.maxPlayers),
-                    // 拡張で人数が広がるなら、合わせた範囲も書く
-                    range?.takeIf { it.first != game.minPlayers || it.last != (game.maxPlayers ?: game.minPlayers) }
-                        ?.let { "拡張込み ${Format.players(it.first, it.last)}" },
-                    Format.minutes(game.minPlayTimeMinutes, game.maxPlayTimeMinutes),
-                    game.complexityRating?.let { "複雑度 $it" },
-                ).joinToString(" ・ ")
-                if (spec.isNotEmpty()) Text(spec)
+                if (state.isNotEmpty()) Text(state, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 if (game.personalRating != null) Stars(game.personalRating)
                 TagBadges(library.genreTags.filter { it.uuid in game.genreTagUuids })
-                game.storageLocation?.let { Text("保管場所: $it") }
-                val purchase = listOfNotNull(
-                    game.purchaseDate?.let { "購入日 $it" },
-                    game.purchasePrice?.let { Format.yen(it.toLong()) },
-                    game.purchaseCurrency?.let { c -> "(${game.purchaseForeignAmount?.toPlainString()} $c × ${game.purchaseExchangeRate?.toPlainString()})" },
-                ).joinToString(" ")
-                if (purchase.isNotEmpty()) Text(purchase)
-                game.barcodeValue?.let { Text("バーコード: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
 
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 人数・時間・複雑度を、頭にアイコンのついた札で並べる
+            val range = GameFilter.playerRange(library, game)
+            // 拡張で人数が広がるなら、合わせた範囲も小さく書き添える
+            val withExpansions = range?.takeIf { it.first != game.minPlayers || it.last != (game.maxPlayers ?: game.minPlayers) }
+                ?.let { "拡張込み ${Format.players(it.first, it.last)}" }
+            val facts = listOfNotNull(
+                Format.players(game.minPlayers, game.maxPlayers)?.let { Triple(Icons.Outlined.Groups, "人数", it) },
+                Format.minutes(game.minPlayTimeMinutes, game.maxPlayTimeMinutes)?.let { Triple(Icons.Outlined.Schedule, "時間", it) },
+                game.complexityRating?.let { Triple(Icons.Outlined.Psychology, "複雑度", "$it") },
+            )
+            if (facts.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
+                    facts.forEachIndexed { i, (icon, label, value) ->
+                        val big = 24.dp
+                        val small = 6.dp
+                        val shape = RoundedCornerShape(
+                            topStart = if (i == 0) big else small, bottomStart = if (i == 0) big else small,
+                            topEnd = if (i == facts.lastIndex) big else small, bottomEnd = if (i == facts.lastIndex) big else small,
+                        )
+                        Surface(Modifier.weight(1f).fillMaxHeight(), shape = shape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                            Column(Modifier.padding(14.dp)) {
+                                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                                Text(value, style = MaterialTheme.typography.titleMediumEmphasized)
+                                if (label == "人数" && withExpansions != null) {
+                                    Text(withExpansions, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Box(Modifier.padding(vertical = 12.dp)) {
+                val modifier = Modifier.fillMaxWidth().height(56.dp)
                 if (game.status == GameStatus.WISHLIST) {
-                    Button(onClick = { vm.act { saveGame(game.copy(status = GameStatus.OWNED, purchaseDate = game.purchaseDate ?: today)) } }) {
-                        Text("買った(所有に移す)")
+                    Button(onClick = { vm.act { saveGame(game.copy(status = GameStatus.OWNED, purchaseDate = game.purchaseDate ?: today)) } }, modifier = modifier) {
+                        Icon(Icons.Filled.ShoppingCart, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text("買った(所有に移す)", Modifier.padding(start = 8.dp))
                     }
                 } else if (parent == null) {
-                    Button(onClick = { onRecordPlay(game.uuid) }) { Text("プレイを記録") }
+                    Button(onClick = { onRecordPlay(game.uuid) }, modifier = modifier) {
+                        Icon(Icons.Filled.EmojiEvents, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text("プレイを記録", Modifier.padding(start = 8.dp))
+                    }
                 } else {
                     // 拡張のプレイは、本体のプレイ記録の「使った拡張」に付ける
-                    Button(onClick = { onRecordPlay(parent.uuid) }) { Text("本体のプレイを記録") }
+                    Button(onClick = { onRecordPlay(parent.uuid) }, modifier = modifier) {
+                        Icon(Icons.Filled.EmojiEvents, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text("本体のプレイを記録", Modifier.padding(start = 8.dp))
+                    }
                 }
             }
 
             if (game.status == GameStatus.OWNED) {
                 SectionHeader(if (game.isExpansion) "使った記録" else "プレイの統計")
-                Text(
-                    listOfNotNull(
-                        if (game.isExpansion) "使用 ${stats.playCount} 回" else "プレイ ${stats.playCount} 回",
-                        "合計 ${Format.duration(stats.totalMinutes)}".takeIf { stats.totalMinutes > 0 },
-                        stats.averageMinutes?.let { "平均 ${Format.duration(it)}" },
-                        stats.lastPlayed?.let { "最後 $it" },
-                    ).joinToString(" ・ "),
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
+                GroupItem(0, 1) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 16.dp)) {
+                        StatCell(if (game.isExpansion) "使用" else "プレイ", "${stats.playCount} 回", Modifier.weight(1f))
+                        StatCell("合計", if (stats.totalMinutes > 0) Format.duration(stats.totalMinutes) else "—", Modifier.weight(1f))
+                        StatCell("平均", stats.averageMinutes?.let { Format.duration(it) } ?: "—", Modifier.weight(1f))
+                    }
+                    stats.lastPlayed?.let {
+                        Text(
+                            "最後 $it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, bottom = 14.dp),
+                        )
+                    }
+                }
 
                 SectionHeader("貸し出し")
-                if (lending != null) {
-                    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${library.player(lending.playerUuid)?.name ?: "?"}さんに貸出中(${lending.lentAt} から)")
-                        Text(
-                            lending.expectedReturnAt?.let { "返却予定 $it(${Reminders.label(lending, today)})" } ?: "返却予定日なし",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        OutlinedButton(onClick = { vm.act { saveLending(lending.copy(returnedAt = today)) } }) { Text("返却済みにする") }
+                GroupItem(0, 1) {
+                    if (lending != null) {
+                        val borrower = library.player(lending.playerUuid)
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (borrower != null) PlayerAvatar(borrower.name, borrower.colorArgb) else LeadingIcon(Icons.Outlined.SwapHoriz)
+                            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                                Text("${borrower?.name ?: "?"}さんに貸出中(${lending.lentAt} から)", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    lending.expectedReturnAt?.let { "返却予定 $it(${Reminders.label(lending, today)})" } ?: "返却予定日なし",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = returnColor(lending, today),
+                                )
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = { vm.act { saveLending(lending.copy(returnedAt = today)) } },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        ) { Text("返却済みにする") }
+                    } else {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            LeadingIcon(Icons.Outlined.SwapHoriz)
+                            Text("手元にあります", Modifier.weight(1f).padding(horizontal = 14.dp), style = MaterialTheme.typography.bodyLarge)
+                            FilledTonalButton(onClick = { showLend = true }) { Text("貸し出す") }
+                        }
                     }
-                } else {
-                    OutlinedButton(onClick = { showLend = true }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("貸し出す") }
                 }
             }
 
             if (parent == null) {
                 SectionHeader("拡張")
-                expansions.forEach { ex ->
+                expansions.forEachIndexed { index, ex ->
                     val used = Stats.gameStats(library, ex.uuid)
-                    ListItem(
-                        modifier = Modifier.clickable { onOpenGame(ex.uuid) },
-                        headlineContent = { Text(ex.title) },
-                        supportingContent = {
-                            Text(
-                                when {
-                                    ex.status == GameStatus.WISHLIST -> "ウィッシュリスト"
-                                    used.playCount == 0 -> "未使用"
-                                    else -> "使用 ${used.playCount} 回 ・ 最後 ${used.lastPlayed}"
-                                },
-                            )
-                        },
-                    )
+                    GroupItem(index, expansions.size, onClick = { onOpenGame(ex.uuid) }) {
+                        ListItem(
+                            colors = groupListItemColors(),
+                            leadingContent = { GameThumb(ex, Modifier.size(44.dp), reqPx = 128, corner = 12.dp, tone = tone) },
+                            headlineContent = { Text(ex.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = {
+                                Text(
+                                    when {
+                                        ex.status == GameStatus.WISHLIST -> "ウィッシュリスト"
+                                        used.playCount == 0 -> "未使用"
+                                        else -> "使用 ${used.playCount} 回 ・ 最後 ${used.lastPlayed}"
+                                    },
+                                )
+                            },
+                        )
+                    }
                 }
-                TextButton(onClick = { onAddExpansion(game.uuid) }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("＋ 拡張を追加") }
+                TextButton(onClick = { onAddExpansion(game.uuid) }) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("拡張を追加", Modifier.padding(start = 6.dp))
+                }
             }
 
             if (sessions.isNotEmpty()) {
                 SectionHeader("最近のプレイ")
-                sessions.sortedByDescending { it.playedAt }.take(5).forEach { s ->
-                    ListItem(
-                        modifier = Modifier.clickable { onOpenSession(s.uuid) },
-                        headlineContent = { Text(s.playedAt.toString()) },
-                        supportingContent = { Text(sessionSummary(library, s)) },
-                    )
+                val recent = sessions.sortedByDescending { it.playedAt }.take(5)
+                recent.forEachIndexed { index, s ->
+                    GroupItem(index, recent.size, onClick = { onOpenSession(s.uuid) }) {
+                        ListItem(
+                            colors = groupListItemColors(),
+                            headlineContent = { Text(s.playedAt.toString()) },
+                            supportingContent = { Text(sessionSummary(library, s)) },
+                        )
+                    }
+                }
+            }
+
+            // 購入・保管場所・バーコードは下にまとめる(遊ぶときに見る物を上に置く)
+            val purchase = listOfNotNull(
+                game.purchaseDate?.let { "購入日 $it" },
+                game.purchasePrice?.let { Format.yen(it.toLong()) },
+                game.purchaseCurrency?.let { c -> "(${game.purchaseForeignAmount?.toPlainString()} $c × ${game.purchaseExchangeRate?.toPlainString()})" },
+            ).joinToString(" ")
+            val details = listOfNotNull(
+                game.storageLocation?.let { Triple(Icons.Outlined.Place, "保管場所", it) },
+                purchase.takeIf { it.isNotEmpty() }?.let { Triple(Icons.Outlined.ShoppingBag, "購入", it) },
+                game.barcodeValue?.let { Triple(Icons.Outlined.QrCode, "バーコード", it) },
+            )
+            if (details.isNotEmpty()) {
+                SectionHeader("持ち物の情報")
+                details.forEachIndexed { index, (icon, label, value) ->
+                    GroupItem(index, details.size) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            LeadingIcon(icon)
+                            Column(Modifier.padding(start = 14.dp)) {
+                                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(value, style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
                 }
             }
         }

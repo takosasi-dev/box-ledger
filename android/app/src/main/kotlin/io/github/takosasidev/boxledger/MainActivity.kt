@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -167,7 +168,8 @@ private fun AppShell(vm: LedgerViewModel, library: Library, navController: NavHo
                                     Icon(dest.icon, contentDescription = if (badge > 0) "貸出中 $badge 件" else null)
                                 }
                             },
-                            label = { Text(dest.label, maxLines = 1) },
+                            // タブが 5 つあると「コレクション」が幅 411dp で切れるので、小さい字にして折り返さない
+                            label = { Text(dest.label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
                         )
                     }
                 }

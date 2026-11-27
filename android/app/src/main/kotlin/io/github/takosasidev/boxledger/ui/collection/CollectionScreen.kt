@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.collection
 
@@ -18,8 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -33,30 +34,35 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +70,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,9 +90,11 @@ import io.github.takosasidev.boxledger.core.model.ViewMode
 import io.github.takosasidev.boxledger.ui.LedgerViewModel
 import io.github.takosasidev.boxledger.ui.components.EmptyState
 import io.github.takosasidev.boxledger.ui.components.GameThumb
+import io.github.takosasidev.boxledger.ui.components.GroupItem
 import io.github.takosasidev.boxledger.ui.components.Stars
 import io.github.takosasidev.boxledger.ui.components.Stepper
 import io.github.takosasidev.boxledger.ui.components.TagBadges
+import io.github.takosasidev.boxledger.ui.theme.LocalStatusColors
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -118,11 +128,24 @@ fun CollectionScreen(
     var showSort by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
+    // 大きな見出しの下の要約。数は統計の画面と同じ集計(:core の Stats.dashboard)を使う
+    val dashboard = remember(library) { Stats.dashboard(library) }
+    val lentCount = library.lendingRecords.count { it.returnedAt == null }
+    val summary = if (wish) {
+        "ほしいゲーム ${dashboard.wishlist} 本"
+    } else {
+        "所有 ${dashboard.ownedGames} 本" + if (lentCount > 0) " ・ 貸出中 $lentCount 本" else ""
+    }
+
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             Column {
-                TopAppBar(
+                LargeFlexibleTopAppBar(
                     title = { Text("コレクション") },
+                    subtitle = { Text(summary) },
+                    scrollBehavior = scrollBehavior,
                     actions = {
                         IconButton(onClick = { vm.viewMode.value = if (mode == ViewMode.GRID) ViewMode.LIST else ViewMode.GRID }) {
                             if (mode == ViewMode.GRID) {
@@ -168,10 +191,11 @@ fun CollectionScreen(
                         }
                     },
                 )
-                OutlinedTextField(
+                // 検索欄と「所有 / ウィッシュリスト」は見出しの下に置いたままにする(一覧が空でも切り替えられるように)
+                TextField(
                     value = query.text,
                     onValueChange = { vm.query.value = rawQuery.copy(text = it) },
-                    placeholder = { Text("タイトル・保管場所・バーコードで検索") },
+                    placeholder = { Text("タイトル・保管場所・バーコードで検索", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.text.isNotEmpty()) {
@@ -179,15 +203,22 @@ fun CollectionScreen(
                         }
                     },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 )
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
                     listOf(GameStatus.OWNED to "所有", GameStatus.WISHLIST to "ウィッシュリスト").forEachIndexed { index, (status, label) ->
                         SegmentedButton(
                             selected = query.status == status,
                             onClick = { vm.query.value = rawQuery.copy(status = status) },
                             shape = SegmentedButtonDefaults.itemShape(index, 2),
-                        ) { Text(label) }
+                        ) { Text(label, maxLines = 1) }
                     }
                 }
             }
@@ -195,9 +226,11 @@ fun CollectionScreen(
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SmallFloatingActionButton(onClick = onScan) { Icon(Icons.Filled.QrCodeScanner, contentDescription = "バーコードを読む") }
-                FloatingActionButton(onClick = { onAdd(wish) }) {
-                    Icon(Icons.Filled.Add, contentDescription = if (wish) "ほしいゲームを追加" else "ゲームを追加")
-                }
+                ExtendedFloatingActionButton(
+                    onClick = { onAdd(wish) },
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text(if (wish) "ほしいゲームを追加" else "ゲームを追加") },
+                )
             }
         },
     ) { padding ->
@@ -220,12 +253,13 @@ fun CollectionScreen(
                 onAction = { onAdd(true) },
             )
             else -> LazyVerticalGrid(
-                columns = if (mode == ViewMode.GRID) GridCells.Adaptive(140.dp) else GridCells.Fixed(1),
+                columns = if (mode == ViewMode.GRID) GridCells.Adaptive(150.dp) else GridCells.Fixed(1),
                 modifier = Modifier.padding(padding).fillMaxSize(),
                 // 下の余白は、右下のボタンに最後の行が隠れないように
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 140.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 160.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                // リストは 1 つのまとまりとして細い隙間で並べる。グリッドはカードどうしを離す
+                verticalArrangement = Arrangement.spacedBy(if (mode == ViewMode.GRID) 10.dp else 3.dp),
             ) {
                 if (!wish && suggestions.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
@@ -236,6 +270,7 @@ fun CollectionScreen(
                             onOpen = onOpen,
                             onRecordPlay = onRecordPlay,
                             onHide = { game -> vm.act { saveGame(game.copy(excludeFromSuggestion = true)) } },
+                            modifier = Modifier.padding(bottom = if (mode == ViewMode.GRID) 0.dp else 9.dp),
                         )
                     }
                 }
@@ -249,11 +284,11 @@ fun CollectionScreen(
                         }
                     }
                 }
-                items(games, key = { it.uuid }) { game ->
+                itemsIndexed(games, key = { _, it -> it.uuid }) { index, game ->
                     if (mode == ViewMode.GRID) {
                         GameCard(library, game, stats[game.uuid]) { onOpen(game.uuid) }
                     } else {
-                        GameRow(library, game, stats[game.uuid]) { onOpen(game.uuid) }
+                        GameRow(library, game, stats[game.uuid], index, games.size) { onOpen(game.uuid) }
                     }
                 }
             }
@@ -269,44 +304,66 @@ fun CollectionScreen(
 private fun specText(game: Game): String =
     listOfNotNull(Format.players(game.minPlayers, game.maxPlayers), Format.minutes(game.minPlayTimeMinutes, game.maxPlayTimeMinutes)).joinToString(" ・ ")
 
-/** 「貸出中」「拡張 3」「アーカイブ」などの印。色ではなく文字で示す。 */
+/** 「拡張 3」「アーカイブ」などの印。色ではなく文字で示す。「貸出中」は注意の色で別に書くので、ここには入れない。 */
 private fun badgeText(library: Library, game: Game): String = listOfNotNull(
-    "貸出中".takeIf { library.openLending(game.uuid) != null },
     library.expansionsOf(game.uuid).size.takeIf { it > 0 }?.let { "拡張 $it" },
     "拡張".takeIf { game.isExpansion },
     "アーカイブ".takeIf { game.isArchived },
 ).joinToString(" ・ ")
 
+/** サムネイルの写真が無いときの地の色。最初のジャンルタグの色にして、箱ごとに見分けやすくする。 */
+private fun thumbTone(library: Library, game: Game): Color? =
+    game.genreTagUuids.firstNotNullOfOrNull { uuid -> library.genreTags.firstOrNull { it.uuid == uuid } }?.let { Color(it.colorArgb) }
+
+/** 「貸出中 ・ 拡張 1 ・ プレイ 8 回」。貸出中だけ注意の色にする(文字でも書く)。 */
+@Composable
+private fun StatusLine(library: Library, game: Game, stats: GameStats?, showPlays: Boolean) {
+    val lent = library.openLending(game.uuid) != null
+    val rest = listOf(badgeText(library, game), if (showPlays && game.status == GameStatus.OWNED) "プレイ ${stats?.playCount ?: 0} 回" else "")
+        .filter { it.isNotEmpty() }.joinToString(" ・ ")
+    if (!lent && rest.isEmpty()) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (lent) {
+            Text("貸出中", style = MaterialTheme.typography.labelMedium, color = LocalStatusColors.current.warn)
+            if (rest.isNotEmpty()) Text(" ・ ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(rest, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 @Composable
 private fun GameCard(library: Library, game: Game, stats: GameStats?, onClick: () -> Unit) {
-    Card(onClick = onClick) {
-        GameThumb(game, Modifier.fillMaxWidth().aspectRatio(1f))
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(game.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        // サムネイルはカードの内側に余白を取って置く(角の丸みはカードより一段小さく)
+        GameThumb(game, Modifier.padding(6.dp).fillMaxWidth().aspectRatio(1f), corner = 18.dp, tone = thumbTone(library, game))
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(game.title, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val spec = specText(game)
-            if (spec.isNotEmpty()) Text(spec, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val badge = badgeText(library, game)
-            if (badge.isNotEmpty()) Text(badge, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-            if (stats != null) Text("プレイ ${stats.playCount} 回", style = MaterialTheme.typography.labelSmall)
-            TagBadges(library.genreTags.filter { it.uuid in game.genreTagUuids }.take(3))
+            if (spec.isNotEmpty()) Text(spec, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            StatusLine(library, game, stats, showPlays = true)
+            TagBadges(library.genreTags.filter { it.uuid in game.genreTagUuids }.take(3), Modifier.padding(top = 2.dp))
         }
     }
 }
 
 @Composable
-private fun GameRow(library: Library, game: Game, stats: GameStats?, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        leadingContent = { GameThumb(game, Modifier.size(56.dp), reqPx = 128) },
-        headlineContent = { Text(game.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            Text(
-                listOf(specText(game), "プレイ ${stats?.playCount ?: 0} 回", badgeText(library, game)).filter { it.isNotEmpty() }.joinToString(" ・ "),
-                maxLines = 2,
-            )
-        },
-        trailingContent = { if (game.personalRating != null) Stars(game.personalRating) },
-    )
+private fun GameRow(library: Library, game: Game, stats: GameStats?, index: Int, count: Int, onClick: () -> Unit) {
+    GroupItem(index, count, onClick = onClick) {
+        Row(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            GameThumb(game, Modifier.size(64.dp), reqPx = 160, corner = 16.dp, tone = thumbTone(library, game))
+            Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(game.title, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val spec = specText(game)
+                if (spec.isNotEmpty()) Text(spec, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                StatusLine(library, game, stats, showPlays = true)
+            }
+            if (game.personalRating != null) Stars(game.personalRating)
+        }
+    }
 }
 
 /** FR-13: 未プレイの提案。畳んだ状態では件数だけを出す。 */
@@ -318,34 +375,43 @@ private fun SuggestionBanner(
     onOpen: (String) -> Unit,
     onRecordPlay: (String) -> Unit,
     onHide: (Game) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("そろそろ遊びませんか(${suggestions.size} 件)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            Text(if (collapsed) "開く" else "畳む", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-        }
-        if (!collapsed) {
-            suggestions.take(5).forEach { s ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    Text(
-                        "そろそろ「${s.game.title}」を遊びませんか",
-                        modifier = Modifier.clickable { onOpen(s.game.uuid) },
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        if (s.lastPlayed != null) "最後に遊んでから ${s.days} 日" else "まだ遊んでいません(${s.days} 日)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row {
-                        TextButton(onClick = { onRecordPlay(s.game.uuid) }) { Text("プレイを記録") }
-                        TextButton(onClick = { onHide(s.game) }) { Text("この提案を非表示にする") }
+    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+        Column {
+            Row(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Casino, contentDescription = null, modifier = Modifier.size(22.dp))
+                Text(
+                    "そろそろ遊びませんか(${suggestions.size} 件)",
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    modifier = Modifier.weight(1f).padding(start = 10.dp),
+                )
+                Text(if (collapsed) "開く" else "畳む", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            }
+            if (!collapsed) {
+                suggestions.take(5).forEach { s ->
+                    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp)) {
+                        Text(
+                            "そろそろ「${s.game.title}」を遊びませんか",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.clickable { onOpen(s.game.uuid) },
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            if (s.lastPlayed != null) "最後に遊んでから ${s.days} 日" else "まだ遊んでいません(${s.days} 日)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                        )
+                        Row {
+                            TextButton(onClick = { onRecordPlay(s.game.uuid) }) { Text("プレイを記録") }
+                            TextButton(onClick = { onHide(s.game) }) { Text("この提案を非表示にする") }
+                        }
                     }
                 }
-            }
-            if (suggestions.size > 5) {
-                Text("ほか ${suggestions.size - 5} 件", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp))
+                if (suggestions.size > 5) {
+                    Text("ほか ${suggestions.size - 5} 件", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp))
+                }
             }
         }
     }

@@ -1,8 +1,29 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.play
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.takosasidev.boxledger.ui.components.GameThumb
+import io.github.takosasidev.boxledger.ui.components.GroupItem
+import io.github.takosasidev.boxledger.ui.components.LeadingIcon
+import io.github.takosasidev.boxledger.ui.components.PlayerAvatar
+import io.github.takosasidev.boxledger.ui.theme.LocalStatusColors
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,13 +97,25 @@ import io.github.takosasidev.boxledger.ui.theme.ColorChoices
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** プレイ記録のタイムライン(新しい順)。 */
+/** プレイ記録のタイムライン(新しい順)。月ごとの見出しで区切る。 */
 @Composable
 fun PlaysScreen(library: Library, onNew: () -> Unit, onOpen: (String) -> Unit) {
     val sessions = remember(library) { library.playSessions.sortedByDescending { it.playedAt } }
+    val byMonth = remember(sessions) { sessions.groupBy { YearMonth.from(it.playedAt) }.toList() }
+    val thisYear = LocalDate.now().year
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
-        topBar = { TopAppBar(title = { Text("プレイ記録") }) },
-        floatingActionButton = { FloatingActionButton(onClick = onNew) { Icon(Icons.Filled.Add, contentDescription = "プレイを記録") } },
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = { Text("プレイ記録") },
+                subtitle = { if (sessions.isNotEmpty()) Text("全 ${sessions.size} 回 ・ ${thisYear} 年は ${sessions.count { it.playedAt.year == thisYear }} 回") },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(onClick = onNew, icon = { Icon(Icons.Filled.Add, contentDescription = null) }, text = { Text("プレイを記録") })
+        },
     ) { padding ->
         if (sessions.isEmpty()) {
             EmptyState(
@@ -94,16 +127,41 @@ fun PlaysScreen(library: Library, onNew: () -> Unit, onOpen: (String) -> Unit) {
                 onAction = onNew,
             )
         } else {
-            LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-                items(sessions, key = { it.uuid }) { s ->
-                    ListItem(
-                        modifier = Modifier.clickable { onOpen(s.uuid) },
-                        overlineContent = { Text(s.playedAt.toString()) },
-                        headlineContent = { Text(library.game(s.gameUuid)?.title ?: "?") },
-                        supportingContent = { Text(sessionSummary(library, s)) },
-                    )
+            LazyColumn(
+                Modifier.padding(padding).fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 112.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                byMonth.forEach { (month, list) ->
+                    item(key = "m-$month") { SectionHeader("${month.year} 年 ${month.monthValue} 月 ・ ${list.size} 回", Modifier.padding(top = 4.dp)) }
+                    itemsIndexed(list, key = { _, s -> s.uuid }) { index, s ->
+                        GroupItem(index, list.size, onClick = { onOpen(s.uuid) }) { SessionRow(library, s) }
+                    }
                 }
             }
+        }
+    }
+}
+
+/** タイムラインの 1 行。左に日付の札、右にゲームと結果。勝った人は文字で書く(色だけに頼らない)。 */
+@Composable
+private fun SessionRow(library: Library, s: PlaySession) {
+    Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text("${s.playedAt.dayOfMonth}", style = MaterialTheme.typography.titleLargeEmphasized, color = MaterialTheme.colorScheme.onSecondaryContainer)
+            Text(
+                s.playedAt.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.JAPANESE),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+        Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(library.game(s.gameUuid)?.title ?: "?", style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sessionSummary(library, s), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -194,10 +252,25 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showGames = true }) { Text("ゲーム: ${game?.title ?: "選ぶ"}") }
+                    // どのゲームかを、箱の写真と大きな文字で見せる。押すと選び直せる
+                    Surface(
+                        onClick = { showGames = true },
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "ゲーム: ${game?.title ?: "選ぶ"}" },
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (game != null) GameThumb(game, Modifier.size(56.dp), reqPx = 160) else LeadingIcon(Icons.Filled.EmojiEvents)
+                            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                                Text("ゲーム", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(game?.title ?: "選ぶ", style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     // 貸出中でも記録は止めない(もう手元に戻っていることもあるため)
                     if (game != null && library.openLending(game.uuid) != null) {
-                        Text("このゲームは貸出中です(記録はこのまま保存できます)", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                        Text("このゲームは貸出中です(記録はこのまま保存できます)", color = LocalStatusColors.current.warn, style = MaterialTheme.typography.bodySmall)
                     }
                     DateField("日付", playedAt, { playedAt = it })
                     OutlinedTextField(
@@ -258,10 +331,15 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
                         },
                     )
                 }
-                entries.forEach { e ->
-                    val name = library.player(e.playerUuid)?.name ?: "?"
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(name, Modifier.weight(1f), maxLines = 2)
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                entries.forEachIndexed { index, e ->
+                    val player = library.player(e.playerUuid)
+                    val name = player?.name ?: "?"
+                    // 1 人分を 1 枚にし、細い隙間で並べる(勝った人は「勝ち」の印と文字で示す)
+                    GroupItem(index, entries.size, Modifier.padding(horizontal = 12.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (player != null) PlayerAvatar(player.name, player.colorArgb, size = 32.dp)
+                        Text(name, Modifier.weight(1f), maxLines = 2, style = MaterialTheme.typography.titleSmallEmphasized)
                         OutlinedTextField(
                             value = e.score,
                             onValueChange = { text -> entries = refill(entries.map { if (it.playerUuid == e.playerUuid) it.copy(score = text.take(10)) else it }) },
@@ -284,9 +362,11 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
                                 onCheckedChange = { on -> update(e.playerUuid) { it.copy(isWinner = on) } },
                                 modifier = Modifier.semantics { contentDescription = "$name が勝ち" },
                             )
-                            Text("勝ち", style = MaterialTheme.typography.labelSmall)
+                            Text("勝ち", style = MaterialTheme.typography.labelSmall, color = if (e.isWinner) LocalStatusColors.current.good else Color.Unspecified)
                         }
                     }
+                    }
+                }
                 }
 
                 OutlinedTextField(

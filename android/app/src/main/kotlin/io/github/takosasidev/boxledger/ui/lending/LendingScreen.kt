@@ -1,5 +1,14 @@
 package io.github.takosasidev.boxledger.ui.lending
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.takosasidev.boxledger.ui.components.GroupItem
+import io.github.takosasidev.boxledger.ui.components.LeadingIcon
+import io.github.takosasidev.boxledger.ui.components.PlayerAvatar
+import io.github.takosasidev.boxledger.ui.components.groupListItemColors
+import io.github.takosasidev.boxledger.ui.game.returnColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -110,6 +119,13 @@ fun LendDialog(vm: LedgerViewModel, library: Library, gameUuid: String, onDismis
     )
 }
 
+/** 借りた人の丸。人が消えていたら中立の丸。 */
+@Composable
+private fun Borrower(library: Library, l: LendingRecord) {
+    val p = library.player(l.playerUuid)
+    if (p != null) PlayerAvatar(p.name, p.colorArgb) else LeadingIcon(Icons.Filled.SwapHoriz)
+}
+
 /** 貸し出しの一覧。未返却(返却予定日の近い順)と、返却済みの履歴。 */
 @Composable
 fun LendingScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit, onOpenGame: (String) -> Unit) {
@@ -128,27 +144,44 @@ fun LendingScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit, onO
                 body = "ゲームの画面の「貸し出す」から、だれに貸したかと返却予定日を書き留められます。",
                 modifier = Modifier.padding(padding),
             )
-        } else LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+        } else LazyColumn(
+            Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             item { SectionHeader("貸出中(${open.size} 件)") }
             if (open.isEmpty()) item { Text("貸しているゲームはありません", Modifier.padding(horizontal = 16.dp)) }
-            items(open, key = { it.uuid }) { l ->
-                ListItem(
-                    modifier = Modifier.fillMaxWidth().clickable { onOpenGame(l.gameUuid) },
-                    headlineContent = { Text(title(l)) },
-                    supportingContent = {
-                        Text("貸出日 ${l.lentAt} ・ " + (l.expectedReturnAt?.let { "返却予定 $it(${Reminders.label(l, today)})" } ?: "返却予定日なし"))
-                    },
-                    trailingContent = { TextButton(onClick = { vm.act { saveLending(l.copy(returnedAt = today)) } }) { Text("返却済み") } },
-                )
+            itemsIndexed(open, key = { _, it -> it.uuid }) { index, l ->
+                GroupItem(index, open.size, onClick = { onOpenGame(l.gameUuid) }) {
+                    ListItem(
+                        colors = groupListItemColors(),
+                        leadingContent = { Borrower(library, l) },
+                        headlineContent = { Text(title(l), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = {
+                            Column {
+                                Text("貸出日 ${l.lentAt}")
+                                Text(
+                                    l.expectedReturnAt?.let { "返却予定 $it(${Reminders.label(l, today)})" } ?: "返却予定日なし",
+                                    color = returnColor(l, today),
+                                )
+                                // ボタンは下に置く(右に置くと題名が細く折り返すため)
+                                FilledTonalButton(onClick = { vm.act { saveLending(l.copy(returnedAt = today)) } }, modifier = Modifier.padding(top = 8.dp)) { Text("返却済み") }
+                            }
+                        },
+                    )
+                }
             }
             if (returned.isNotEmpty()) item { SectionHeader("返却済み") }
-            items(returned, key = { it.uuid }) { l ->
-                ListItem(
-                    modifier = Modifier.fillMaxWidth().clickable { onOpenGame(l.gameUuid) },
-                    headlineContent = { Text(title(l)) },
-                    supportingContent = { Text("${l.lentAt} 〜 ${l.returnedAt}") },
-                    trailingContent = { IconButton(onClick = { deleting = l }) { Icon(Icons.Filled.Delete, contentDescription = "この記録を削除") } },
-                )
+            itemsIndexed(returned, key = { _, it -> it.uuid }) { index, l ->
+                GroupItem(index, returned.size, onClick = { onOpenGame(l.gameUuid) }) {
+                    ListItem(
+                        colors = groupListItemColors(),
+                        leadingContent = { Borrower(library, l) },
+                        headlineContent = { Text(title(l), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text("${l.lentAt} 〜 ${l.returnedAt}") },
+                        trailingContent = { IconButton(onClick = { deleting = l }) { Icon(Icons.Filled.Delete, contentDescription = "この記録を削除") } },
+                    )
+                }
             }
         }
     }

@@ -1,6 +1,11 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.game
+
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import io.github.takosasidev.boxledger.ui.components.GroupItem
 
 import android.Manifest
 import android.net.Uri
@@ -206,17 +211,19 @@ fun GameEditScreen(
         actions = { TextButton(enabled = canSave, onClick = save) { Text("保存") } },
     ) { padding ->
         Column(
-            Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
+          // 入力欄を「箱」「遊び方」「購入と保管」の 3 枚に分ける(1 枚の中の並びと動きは元のまま)
+          FormCard(0, 3) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PhotoBox(photo, Modifier.size(88.dp))
-                OutlinedButton(onClick = { cameraPermission.launch(Manifest.permission.CAMERA) }) {
-                    Icon(Icons.Filled.PhotoCamera, contentDescription = null)
+                PhotoBox(photo, Modifier.size(88.dp), corner = 24.dp)
+                FilledTonalButton(onClick = { cameraPermission.launch(Manifest.permission.CAMERA) }) {
+                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text("撮る", Modifier.padding(start = 6.dp))
                 }
-                OutlinedButton(onClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                    Icon(Icons.Filled.Image, contentDescription = null)
+                FilledTonalButton(onClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                    Icon(Icons.Filled.Image, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text("選ぶ", Modifier.padding(start = 6.dp))
                 }
                 if (photo != null) IconButton(onClick = { photo = null }) { Icon(Icons.Filled.Close, contentDescription = "写真を外す") }
@@ -261,7 +268,9 @@ fun GameEditScreen(
                     }
                 }
             }
+          }
 
+          FormCard(1, 3, "遊び方") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NumberField(minPlayers, { minPlayers = it }, "最少人数", Modifier.weight(1f), isError = !playersOk)
                 NumberField(maxPlayers, { maxPlayers = it }, "最多人数", Modifier.weight(1f), isError = !playersOk)
@@ -299,7 +308,24 @@ fun GameEditScreen(
                 }
             }
 
-            SectionHeader("購入", Modifier.padding(horizontal = 0.dp))
+            Text("プレイ記録での順位と勝者の決め方")
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                val choices = listOf(WinCondition.HIGH_SCORE to "高い方が勝ち", WinCondition.LOW_SCORE to "低い方が勝ち", WinCondition.MANUAL to "手で決める")
+                choices.forEachIndexed { index, (value, label) ->
+                    SegmentedButton(
+                        selected = winCondition == value,
+                        onClick = { winCondition = value },
+                        shape = SegmentedButtonDefaults.itemShape(index, choices.size),
+                        // チェックの印は出さない(3 つ並ぶと文字が欠けるため。選んだ物は地の色で分かる)
+                        icon = {},
+                    ) {
+                        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                    }
+                }
+            }
+          }
+
+          FormCard(2, 3, "購入と保管") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("外貨で買った", Modifier.weight(1f))
                 Switch(checked = foreign, onCheckedChange = { foreign = it })
@@ -352,16 +378,18 @@ fun GameEditScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
+          }
+        }
+    }
+}
 
-            Text("プレイ記録での順位と勝者の決め方")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                val choices = listOf(WinCondition.HIGH_SCORE to "高い方が勝ち", WinCondition.LOW_SCORE to "低い方が勝ち", WinCondition.MANUAL to "手で決める")
-                choices.forEachIndexed { index, (value, label) ->
-                    SegmentedButton(selected = winCondition == value, onClick = { winCondition = value }, shape = SegmentedButtonDefaults.itemShape(index, choices.size)) {
-                        Text(label, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            }
+/** 入力欄のまとまりの 1 枚。[title] があれば上に見出しを書く。 */
+@Composable
+private fun FormCard(index: Int, count: Int, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    GroupItem(index, count) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (title != null) Text(title, style = MaterialTheme.typography.titleSmallEmphasized, color = MaterialTheme.colorScheme.primary)
+            content()
         }
     }
 }

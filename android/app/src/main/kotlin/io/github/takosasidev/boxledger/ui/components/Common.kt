@@ -1,5 +1,5 @@
 // 複数の画面で使う部品。
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.components
 
@@ -14,12 +14,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,9 +40,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -62,6 +71,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -72,11 +82,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.takosasidev.boxledger.core.model.Game
 import io.github.takosasidev.boxledger.core.model.GenreTag
 import io.github.takosasidev.boxledger.data.PhotoLoader
 import io.github.takosasidev.boxledger.ui.theme.ColorChoices
+import io.github.takosasidev.boxledger.ui.theme.colorTones
 import io.github.takosasidev.boxledger.ui.theme.onColor
 import java.time.Instant
 import java.time.LocalDate
@@ -110,30 +122,103 @@ fun SubScreen(
 }
 
 /**
- * 箱の写真。写真が無い・消えている・壊れているなら、中立の色の上に箱のアイコン。
+ * 箱の写真。写真が無い・消えている・壊れているなら、淡い地の上に箱のアイコン。
  * 写真のファイルが端末から消えていても落ちない(PhotoLoader が null を返す)。大きさは呼ぶ側の modifier で決める。
+ * [tone] を渡すと、写真が無いときの地と記号をその色の淡い組にする(一覧で箱ごとに見分けやすくするため)。
  */
 @Composable
-fun GameThumb(game: Game, modifier: Modifier = Modifier, reqPx: Int = 256) {
-    PhotoBox(game.boxPhotoFile, modifier, reqPx)
+fun GameThumb(game: Game, modifier: Modifier = Modifier, reqPx: Int = 256, corner: Dp = 16.dp, tone: Color? = null) {
+    PhotoBox(game.boxPhotoFile, modifier, reqPx, corner, tone)
 }
 
 @Composable
-fun PhotoBox(photoFile: String?, modifier: Modifier = Modifier, reqPx: Int = 256) {
+fun PhotoBox(photoFile: String?, modifier: Modifier = Modifier, reqPx: Int = 256, corner: Dp = 16.dp, tone: Color? = null) {
     val context = LocalContext.current
     var bitmap by remember(photoFile) { mutableStateOf<ImageBitmap?>(photoFile?.let { PhotoLoader.cached(it, reqPx)?.asImageBitmap() }) }
     LaunchedEffect(photoFile) {
         if (photoFile != null && bitmap == null) bitmap = PhotoLoader.decodeSampled(context, photoFile, reqPx)?.asImageBitmap()
     }
-    Box(
-        modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+    val (background, foreground) = tone?.let { colorTones(it) }
+        ?: (MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant)
+    BoxWithConstraints(
+        modifier.clip(RoundedCornerShape(corner)).background(background),
         contentAlignment = Alignment.Center,
     ) {
         val shown = bitmap
         if (shown != null) {
             Image(shown, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
-            Icon(Icons.Filled.Inventory2, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
+            // 枠の大きさに合わせて記号の大きさを決める(小さいサムネイルで記号がはみ出さないように)
+            Icon(Icons.Filled.Inventory2, contentDescription = null, tint = foreground, modifier = Modifier.size(minOf(maxWidth, maxHeight) * 0.42f))
+        }
+    }
+}
+
+/** まとまったリストの 1 枚の角。端だけ大きく丸め、間は小さくする(Android 16 の設定の画面と同じ形)。 */
+fun groupShape(index: Int, count: Int): Shape {
+    val big = 24.dp
+    val small = 6.dp
+    val top = if (index == 0) big else small
+    val bottom = if (index == count - 1) big else small
+    return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
+}
+
+/** まとまりの中の 1 枚。地は surfaceContainerHigh。[onClick] があれば押せる。中の ListItem は地を透明にして使う。 */
+@Composable
+fun GroupItem(index: Int, count: Int, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+    val color = MaterialTheme.colorScheme.surfaceContainerHigh
+    // 中身は縦に積む(Surface は重ねて置くので、2 つ以上並べると重なる)
+    if (onClick != null) {
+        Surface(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = groupShape(index, count), color = color) { Column { content() } }
+    } else {
+        Surface(modifier = modifier.fillMaxWidth(), shape = groupShape(index, count), color = color) { Column { content() } }
+    }
+}
+
+/** まとまりの中に置く ListItem の色(地は透明。まとまりの地を見せる)。 */
+@Composable
+fun groupListItemColors() = ListItemDefaults.colors(containerColor = Color.Transparent)
+
+/** 見出しと、角の丸いまとまり。行どうしは細い隙間で区切る。 */
+@Composable
+fun Group(title: String?, vararg rows: @Composable () -> Unit) {
+    if (title != null) SectionHeader(title, Modifier.padding(top = 4.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        rows.forEachIndexed { i, row -> GroupItem(i, rows.size) { Column { row() } } }
+    }
+}
+
+/** 行の頭の丸いアイコン。 */
+@Composable
+fun LeadingIcon(icon: ImageVector) {
+    Box(
+        Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp)) }
+}
+
+/** プレイヤーの丸。その人の色の淡い地に、名前の頭の 1 文字を濃い色で書く(色だけで人を見分けさせない)。 */
+@Composable
+fun PlayerAvatar(name: String, colorArgb: Int, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+    val (background, foreground) = colorTones(Color(colorArgb))
+    Box(modifier.size(size).clip(CircleShape).background(background), contentAlignment = Alignment.Center) {
+        Text(
+            name.take(1),
+            color = foreground,
+            style = if (size >= 56.dp) MaterialTheme.typography.headlineSmallEmphasized else MaterialTheme.typography.titleMediumEmphasized,
+        )
+    }
+}
+
+/**
+ * 横の棒。後ろに枠を敷いて全体の長さを見せる。値は呼ぶ側で文字でも書く(長さだけに頼らない)。
+ * [track] は棒の下の地。まとまり(surfaceContainerHigh)の上なら既定の surfaceContainerLowest が浮いて見える。
+ */
+@Composable
+fun MeterBar(fraction: Float, color: Color, modifier: Modifier = Modifier, height: Dp = 10.dp, track: Color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+    Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2)).background(track)) {
+        if (fraction > 0f) {
+            Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).fillMaxHeight().clip(RoundedCornerShape(height / 2)).background(color))
         }
     }
 }
@@ -153,8 +238,11 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(72.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+        Box(
+            Modifier.size(112.dp).clip(RoundedCornerShape(36.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(56.dp)) }
+        Text(title, style = MaterialTheme.typography.titleLargeEmphasized, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
         Text(
             body,
             style = MaterialTheme.typography.bodyMedium,
@@ -195,18 +283,19 @@ fun Stars(rating: Int?, modifier: Modifier = Modifier, onChange: ((Int?) -> Unit
     }
 }
 
-/** ジャンルタグのバッジ。色だけに頼らず、名前も書く。 */
+/** ジャンルタグのバッジ。色だけに頼らず、名前も書く。濃いベタ塗りではなく、タグの色の淡い地に濃い文字。 */
 @Composable
 fun TagBadges(tags: List<GenreTag>, modifier: Modifier = Modifier) {
     if (tags.isEmpty()) return
     Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         tags.forEach { tag ->
-            val color = Color(tag.colorArgb)
+            val (background, foreground) = colorTones(Color(tag.colorArgb))
             Text(
                 tag.name,
-                color = onColor(color),
+                color = foreground,
                 style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color).padding(horizontal = 8.dp, vertical = 3.dp),
+                maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(background).padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
     }
@@ -281,14 +370,23 @@ fun ColorRow(selected: Int?, onSelect: (Int) -> Unit, modifier: Modifier = Modif
     }
 }
 
-/** 数を 1 つずつ増減する行(設定の日数など)。 */
+/**
+ * 数を 1 つずつ増減する行(設定の日数など)。−/＋ は押している間に丸から角丸の四角へ形が変わる(Expressive)。
+ * 大きさは M3 の既定のまま(見た目 40dp、タップの領域は 48dp)。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun Stepper(label: String, value: Int, range: IntRange, unit: String, step: Int = 1, onChange: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        IconButton(enabled = value - step >= range.first, onClick = { onChange(value - step) }) { Icon(Icons.Filled.Remove, contentDescription = "$label を減らす") }
-        Text("$value $unit")
-        IconButton(enabled = value + step <= range.last, onClick = { onChange(value + step) }) { Icon(Icons.Filled.Add, contentDescription = "$label を増やす") }
+fun Stepper(label: String, value: Int, range: IntRange, unit: String, step: Int = 1, icon: ImageVector? = null, onChange: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (icon != null) LeadingIcon(icon)
+        Text(label, Modifier.weight(1f).padding(start = if (icon != null) 16.dp else 0.dp), style = MaterialTheme.typography.bodyLarge)
+        FilledTonalIconButton(enabled = value - step >= range.first, onClick = { onChange(value - step) }, shapes = IconButtonDefaults.shapes()) {
+            Icon(Icons.Filled.Remove, contentDescription = "$label を減らす", modifier = Modifier.size(20.dp))
+        }
+        Text("$value $unit", style = MaterialTheme.typography.titleSmallEmphasized, textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 72.dp).padding(horizontal = 4.dp))
+        FilledTonalIconButton(enabled = value + step <= range.last, onClick = { onChange(value + step) }, shapes = IconButtonDefaults.shapes()) {
+            Icon(Icons.Filled.Add, contentDescription = "$label を増やす", modifier = Modifier.size(20.dp))
+        }
     }
 }
 

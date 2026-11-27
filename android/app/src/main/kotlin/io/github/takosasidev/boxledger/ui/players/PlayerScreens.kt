@@ -1,6 +1,21 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.players
+
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.takosasidev.boxledger.ui.components.GroupItem
+import io.github.takosasidev.boxledger.ui.components.MeterBar
+import io.github.takosasidev.boxledger.ui.components.PlayerAvatar
+import io.github.takosasidev.boxledger.ui.components.groupListItemColors
+import io.github.takosasidev.boxledger.ui.theme.LocalStatusColors
+import io.github.takosasidev.boxledger.ui.theme.colorTones
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,26 +79,40 @@ import io.github.takosasidev.boxledger.ui.components.SectionHeader
 import io.github.takosasidev.boxledger.ui.components.SubScreen
 import io.github.takosasidev.boxledger.ui.theme.ColorChoices
 
-/** 勝率のバー。色だけに頼らないよう、隣に「7 勝 / 10 回(70%)」と数も書く。 */
+/**
+ * 勝率のバー。色だけに頼らないよう、上に「7 勝 / 10 回」と数も書く。
+ * 棒の色は人の色の濃い方(淡い地の上でも読める濃さ)。後ろに枠を敷いて全体の長さを見せる。
+ */
 @Composable
 private fun WinRateBar(record: Record, color: Color, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            if (record.plays == 0) "まだ記録がありません" else "${record.wins} 勝 / ${record.plays} 回(勝率 ${record.winRateText})",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        LinearProgressIndicator(
-            progress = { (record.winRate ?: 0.0).toFloat() },
-            color = color,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-        )
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                if (record.plays == 0) "まだ記録がありません" else "${record.wins} 勝 / ${record.plays} 回",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (record.plays > 0) Text("勝率 ${record.winRateText}", style = MaterialTheme.typography.titleSmallEmphasized)
+        }
+        MeterBar((record.winRate ?: 0.0).toFloat(), colorTones(color).second, height = 8.dp)
     }
 }
 
+/** 「勝ち」「負け」の札。勝ちは決まった良い色の淡い地、負けは中立の地。 */
 @Composable
-private fun PlayerDot(player: Player, modifier: Modifier = Modifier) {
-    Box(modifier.size(40.dp).clip(CircleShape).background(Color(player.colorArgb)))
+private fun ResultChip(won: Boolean) {
+    val (background, foreground) = if (won) {
+        colorTones(LocalStatusColors.current.good)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        if (won) "勝ち" else "負け",
+        style = MaterialTheme.typography.labelLarge,
+        color = foreground,
+        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(background).padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 /** プレイヤーの一覧(FR-04 / FR-06)。 */
@@ -91,9 +120,19 @@ private fun PlayerDot(player: Player, modifier: Modifier = Modifier) {
 fun PlayersScreen(vm: LedgerViewModel, library: Library, onOpen: (String) -> Unit) {
     var adding by remember { mutableStateOf(false) }
     val stats = remember(library) { library.players.associate { it.uuid to Stats.playerStats(library, it.uuid).total } }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
-        topBar = { TopAppBar(title = { Text("プレイヤー") }) },
-        floatingActionButton = { FloatingActionButton(onClick = { adding = true }) { Icon(Icons.Filled.Add, contentDescription = "プレイヤーを追加") } },
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = { Text("プレイヤー") },
+                subtitle = { if (library.players.isNotEmpty()) Text("${library.players.size} 人") },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Filled.Add, contentDescription = null) }, text = { Text("プレイヤーを追加") })
+        },
     ) { padding ->
         if (library.players.isEmpty()) {
             EmptyState(
@@ -105,14 +144,21 @@ fun PlayersScreen(vm: LedgerViewModel, library: Library, onOpen: (String) -> Uni
                 onAction = { adding = true },
             )
         } else {
-            LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-                items(library.players, key = { it.uuid }) { p ->
-                    ListItem(
-                        modifier = Modifier.clickable { onOpen(p.uuid) },
-                        leadingContent = { PlayerDot(p) },
-                        headlineContent = { Text(p.name + if (p.isSelf) "(自分)" else "") },
-                        supportingContent = { WinRateBar(stats[p.uuid] ?: Record(0, 0), Color(p.colorArgb)) },
-                    )
+            LazyColumn(
+                Modifier.padding(padding).fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 112.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                itemsIndexed(library.players, key = { _, it -> it.uuid }) { index, p ->
+                    GroupItem(index, library.players.size, onClick = { onOpen(p.uuid) }) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            PlayerAvatar(p.name, p.colorArgb, size = 48.dp)
+                            Column(Modifier.weight(1f).padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(p.name + if (p.isSelf) "(自分)" else "", style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                WinRateBar(stats[p.uuid] ?: Record(0, 0), Color(p.colorArgb))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -196,35 +242,50 @@ fun PlayerDetailScreen(vm: LedgerViewModel, library: Library, uuid: String, onBa
             IconButton(onClick = { deleting = true }) { Icon(Icons.Filled.Delete, contentDescription = "削除") }
         },
     ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(
+            Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             item {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PlayerDot(player)
-                    Column(Modifier.weight(1f)) {
-                        Text(player.name + if (player.isSelf) "(自分)" else "", style = MaterialTheme.typography.titleLarge)
-                        player.memo?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                // 顔の丸・名前・全体の勝率を 1 枚にまとめる
+                Surface(Modifier.fillMaxWidth().padding(bottom = 6.dp), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PlayerAvatar(player.name, player.colorArgb, size = 64.dp)
+                            Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                                Text(player.name + if (player.isSelf) "(自分)" else "", style = MaterialTheme.typography.headlineSmallEmphasized)
+                                player.memo?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                        }
+                        WinRateBar(stats.total, color)
                     }
                 }
-                WinRateBar(stats.total, color, Modifier.padding(horizontal = 16.dp))
             }
             if (stats.byGame.isNotEmpty()) item { SectionHeader("ゲーム別の成績") }
-            items(stats.byGame, key = { "g-" + it.first }) { (gameUuid, record) ->
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    Text(library.game(gameUuid)?.title ?: "?", style = MaterialTheme.typography.titleSmall)
-                    WinRateBar(record, color)
+            itemsIndexed(stats.byGame, key = { _, it -> "g-" + it.first }) { index, (gameUuid, record) ->
+                GroupItem(index, stats.byGame.size) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(library.game(gameUuid)?.title ?: "?", style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        WinRateBar(record, color)
+                    }
                 }
             }
             if (history.isNotEmpty()) item { SectionHeader("対戦の履歴") }
-            items(history, key = { "s-" + it.uuid }) { s ->
+            itemsIndexed(history, key = { _, it -> "s-" + it.uuid }) { index, s ->
                 val mine = s.results.first { it.playerUuid == uuid }
-                ListItem(
-                    modifier = Modifier.clickable { onOpenSession(s.uuid) },
-                    overlineContent = { Text(s.playedAt.toString()) },
-                    headlineContent = { Text(library.game(s.gameUuid)?.title ?: "?") },
-                    supportingContent = {
-                        Text(listOfNotNull(if (mine.isWinner) "勝ち" else "負け", mine.rank?.let { "$it 位" }, mine.score?.let { "スコア ${Format.number(it)}" }).joinToString(" ・ "))
-                    },
-                )
+                GroupItem(index, history.size, onClick = { onOpenSession(s.uuid) }) {
+                    ListItem(
+                        colors = groupListItemColors(),
+                        overlineContent = { Text(s.playedAt.toString()) },
+                        headlineContent = { Text(library.game(s.gameUuid)?.title ?: "?", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = {
+                            Text(listOfNotNull(mine.rank?.let { "$it 位" }, mine.score?.let { "スコア ${Format.number(it)}" }).joinToString(" ・ "))
+                        },
+                        // 勝ち負けは札の文字で示す(色は補助)
+                        trailingContent = { ResultChip(mine.isWinner) },
+                    )
+                }
             }
         }
     }

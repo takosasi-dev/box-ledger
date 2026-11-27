@@ -1,6 +1,25 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.takosasidev.boxledger.ui.stats
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.takosasidev.boxledger.ui.components.MeterBar
+import io.github.takosasidev.boxledger.ui.components.groupShape
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -43,27 +62,65 @@ import io.github.takosasidev.boxledger.ui.components.SectionHeader
 import io.github.takosasidev.boxledger.ui.components.SubScreen
 import java.time.LocalDate
 
+/** 数の札。ラベルは小さく、数は大きな強調の文字にする。 */
 @Composable
-private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(12.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleLarge)
+private fun StatTile(label: String, value: String, shape: Shape, modifier: Modifier = Modifier) {
+    Surface(modifier, shape = shape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(value, style = MaterialTheme.typography.headlineSmallEmphasized, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }
 
-/** 「名前 ████ 3」の横棒。長さだけでなく数も書く。 */
+/** 見出しのついた 1 枚。 */
 @Composable
-private fun BarRow(label: String, count: Int, max: Int, unit: String) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.width(120.dp), maxLines = 1)
-        LinearProgressIndicator(
-            progress = { if (max == 0) 0f else count.toFloat() / max },
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.weight(1f).height(10.dp).clip(RoundedCornerShape(5.dp)),
+private fun Panel(title: String, shape: Shape, content: @Composable () -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = shape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmallEmphasized, color = MaterialTheme.colorScheme.primary)
+            content()
+        }
+    }
+}
+
+/** 「名前 ████ 3 回」の横棒。長さだけでなく数も書く。棒の後ろに枠を敷いて全体の長さを見せる。 */
+@Composable
+private fun BarRow(label: String, count: Int, max: Int, unit: String, strong: Boolean = false) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("$count $unit", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 8.dp))
+        }
+        MeterBar(
+            if (max == 0) 0f else count.toFloat() / max,
+            if (strong) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
         )
-        Text("$count $unit", Modifier.width(64.dp), textAlign = TextAlign.End)
+    }
+}
+
+/** 複雑度 1〜5 の縦棒。どの段にも空の枠を描き、0 件の段も「無い」と分かるようにする。件数は棒の下に書く。 */
+@Composable
+private fun ComplexityChart(counts: List<Int>) {
+    val max = counts.maxOrNull()?.coerceAtLeast(1) ?: 1
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+        counts.forEachIndexed { i, count ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerLowest),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    if (count > 0) {
+                        Box(
+                            Modifier.fillMaxWidth().fillMaxHeight(count.toFloat() / max).clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f + 0.13f * i)),
+                        )
+                    }
+                }
+                Text("${i + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
+                Text("$count 件", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -71,50 +128,70 @@ private fun BarRow(label: String, count: Int, max: Int, unit: String) {
 @Composable
 fun StatsScreen(library: Library, onYearReview: () -> Unit) {
     val d = remember(library) { Stats.dashboard(library) }
-    Scaffold(topBar = { TopAppBar(title = { Text("統計") }) }) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("所有しているゲーム", "${d.ownedGames}", Modifier.weight(1f))
-                StatCard("拡張", "${d.ownedExpansions}", Modifier.weight(1f))
-                StatCard("ほしい物", "${d.wishlist}", Modifier.weight(1f))
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = { LargeFlexibleTopAppBar(title = { Text("統計") }, scrollBehavior = scrollBehavior) },
+    ) { padding ->
+        Column(
+            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            // 上の札は 2 段のまとまり。外側の角だけ大きく丸める
+            val big = 24.dp
+            val small = 6.dp
+            // 札の高さをそろえる(数の字の高さが札ごとに違っても、段の下の線がずれないように)
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
+                StatTile("所有のゲーム", "${d.ownedGames}", RoundedCornerShape(big, small, small, small), Modifier.weight(1f).fillMaxHeight())
+                StatTile("拡張", "${d.ownedExpansions}", RoundedCornerShape(small), Modifier.weight(1f).fillMaxHeight())
+                StatTile("ほしい物", "${d.wishlist}", RoundedCornerShape(small, big, small, small), Modifier.weight(1f).fillMaxHeight())
             }
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("購入額の合計", Format.yen(d.totalPrice), Modifier.weight(1f))
-                StatCard("プレイの回数", "${d.totalPlays}", Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
+                StatTile("購入額の合計", Format.yen(d.totalPrice), RoundedCornerShape(small, small, small, big), Modifier.weight(1.4f).fillMaxHeight())
+                StatTile("プレイの回数", "${d.totalPlays}", RoundedCornerShape(small, small, big, small), Modifier.weight(1f).fillMaxHeight())
             }
             Text(
                 "所有の数と購入額は、アーカイブした物とウィッシュリストを除きます。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             )
 
-            SectionHeader("よく遊んだゲーム")
-            if (d.mostPlayed.isEmpty()) Text("まだプレイの記録がありません", Modifier.padding(horizontal = 16.dp))
-            val top = d.mostPlayed.firstOrNull()?.second ?: 0
-            d.mostPlayed.forEach { (game, count) -> BarRow(game.title, count, top, "回") }
+            Panel("よく遊んだゲーム", groupShape(0, 2)) {
+                if (d.mostPlayed.isEmpty()) Text("まだプレイの記録がありません", style = MaterialTheme.typography.bodySmall)
+                val top = d.mostPlayed.firstOrNull()?.second ?: 0
+                d.mostPlayed.forEachIndexed { i, (game, count) -> BarRow("${i + 1}. ${game.title}", count, top, "回", strong = i == 0) }
+            }
 
-            SectionHeader("複雑度の分布")
-            val maxLevel = d.complexity.maxOrNull() ?: 0
-            if (maxLevel == 0) Text("複雑度を入れたゲームがありません", Modifier.padding(horizontal = 16.dp))
-            d.complexity.forEachIndexed { index, count -> BarRow("複雑度 ${index + 1}", count, maxLevel, "件") }
+            Panel("複雑度の分布", groupShape(1, 2)) {
+                if ((d.complexity.maxOrNull() ?: 0) == 0) {
+                    Text("複雑度を入れたゲームがありません", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    ComplexityChart(d.complexity)
+                }
+            }
 
-            Button(onClick = onYearReview, modifier = Modifier.padding(16.dp)) { Text("年間の振り返りを見る") }
+            FilledTonalButton(onClick = onYearReview, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(56.dp)) {
+                Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp))
+                Text("年間の振り返りを見る", Modifier.padding(start = 8.dp))
+            }
         }
     }
 }
 
 @Composable
 private fun Slide(title: String, big: String, lines: List<String>) {
-    Card(Modifier.fillMaxSize().padding(16.dp)) {
+    Surface(Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.primaryContainer) {
         Column(
-            Modifier.fillMaxSize().padding(24.dp),
+            Modifier.fillMaxSize().padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Text(big, style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 16.dp))
-            lines.forEach { Text(it, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 2.dp)) }
+            Text(title, style = MaterialTheme.typography.titleMediumEmphasized, textAlign = TextAlign.Center)
+            Text(big, style = MaterialTheme.typography.displayMediumEmphasized, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 20.dp))
+            lines.forEach {
+                Text(it, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 3.dp))
+            }
         }
     }
 }
