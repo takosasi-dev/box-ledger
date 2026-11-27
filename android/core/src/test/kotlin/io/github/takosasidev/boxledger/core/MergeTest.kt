@@ -226,6 +226,20 @@ class MergeTest {
     }
 
     @Test
+    fun 相手が自分を付け替えていたら_並び順によらず新しい自分になる() {
+        val local = Library(
+            players = listOf(Player("x", "前の自分", 1, isSelf = true, createdAt = old, updatedAt = old), Player("y", "次の自分", 1, createdAt = old, updatedAt = old)),
+        )
+        val x = Player("x", "前の自分", 1, isSelf = false, createdAt = old, updatedAt = new)
+        val y = Player("y", "次の自分", 1, isSelf = true, createdAt = old, updatedAt = new)
+        listOf(listOf(x, y), listOf(y, x)).forEach { order ->
+            val r = Merge.merge(local, Library(players = order))
+            assertEquals(listOf("y"), r.library.players.filter { it.isSelf }.map { it.uuid })
+            assertTrue(r.warnings.isEmpty())
+        }
+    }
+
+    @Test
     fun 削除は伝わらず_相手に残っていれば戻る() {
         val r = Merge.merge(Library(), Library(games = listOf(Game("g1", "架空のゲームA"))))
         assertEquals(MergeCount(added = 1), r.games)

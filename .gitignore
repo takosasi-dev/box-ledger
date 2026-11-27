@@ -9,6 +9,8 @@ local.properties
 
 # ビルドの順番待ちの記録(作業用)
 .buildq/
+# 窓なしでビルドしたときの出力(作業用)
+build-last*.txt
 
 # 署名の鍵は入れない。無くても assembleDebug は通る(debug の鍵で署名する)
 keystore/

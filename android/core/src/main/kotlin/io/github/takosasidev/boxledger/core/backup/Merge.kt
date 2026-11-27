@@ -133,7 +133,16 @@ object Merge {
         // ---- プレイヤー: 「自分」同士は確認せずに同じ物。名前が同じなら確認 ----
         val players = Pass(AliasType.PLAYER, local.players, Player::uuid, Player::updatedAt)
         players.mergeIn(
-            incoming.players,
+            // uuid で相手が決まる「自分ではない人」を先に処理する。相手が「自分」を別の人に付け替えていたとき、
+            // 先に古い「自分」の印を外さないと、新しい「自分」を「こちらの自分は別にいる」と取り違えて、
+            // だれも「自分」でなくなる(zip の中の並び順で結果が変わる)。残りは「自分」→ ほかの人の順(同一候補は「自分」が先に取る)
+            incoming.players.sortedBy { p ->
+                when {
+                    !p.isSelf && players.direct(p.uuid) != null -> 0
+                    p.isSelf -> 1
+                    else -> 2
+                }
+            },
             findSame = { p, free ->
                 val self = if (p.isSelf) players.rows.values.firstOrNull { it.isSelf && free(it.uuid) } else null
                 self?.let { it to false }

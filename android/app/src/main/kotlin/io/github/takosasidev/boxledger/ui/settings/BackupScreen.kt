@@ -190,7 +190,11 @@ fun BackupScreen(vm: LedgerViewModel, library: Library, onBack: () -> Unit) {
                         "どちらも、直前の状態をアプリの中に自動で残します。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                FilledTonalButton(enabled = !busy, onClick = { openBackup.launch(arrayOf(BackupManager.ZIP_MIME, "application/octet-stream")) }) {
+                // zip の種類の名前は、置き場のアプリによって違う(Windows から持ってきた zip は x-zip-compressed になりやすい)。
+                // ここに無い種類の zip は、ファイルを選ぶ画面で灰色になって選べない
+                FilledTonalButton(enabled = !busy, onClick = {
+                    openBackup.launch(arrayOf(BackupManager.ZIP_MIME, "application/x-zip-compressed", "application/x-zip", "application/octet-stream"))
+                }) {
                     Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text("zip を選んで読み込む", Modifier.padding(start = 8.dp))
                 }

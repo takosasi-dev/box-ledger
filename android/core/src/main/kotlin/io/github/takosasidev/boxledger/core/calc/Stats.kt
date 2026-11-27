@@ -23,6 +23,8 @@ data class PlayerStats(val total: Record, /** ゲームの uuid ごと。回数�
 
 data class GameStats(val playCount: Int, val totalMinutes: Int, val averageMinutes: Int?, val lastPlayed: LocalDate?)
 
+data class DeleteImpact(val sessions: Int, val lendings: Int, /** 残るが「使った拡張」から外れるプレイ記録。 */ val unlinkedSessions: Int)
+
 data class Dashboard(
     val ownedGames: Int,
     val ownedExpansions: Int,
@@ -68,6 +70,23 @@ object Stats {
         library.playSessions.filter { it.gameUuid == gameUuid || gameUuid in it.expansionUuids }
 
     fun gameStats(library: Library, gameUuid: String): GameStats = gameStats(sessionsOf(library, gameUuid))
+
+    /**
+     * ゲームを消すと一緒に消える記録の数(FR-26 の確認の画面に出す)。DB の外部キーのカスケードと同じ数え方。
+     * 消えるプレイ記録は「そのゲームに付いた記録」だけ。拡張を消しても、本体のプレイ記録は残り、
+     * 「使った拡張」から外れるだけ([DeleteImpact.unlinkedSessions])。
+     */
+    fun gameDeleteImpact(library: Library, gameUuid: String, withExpansions: Boolean): DeleteImpact {
+        val gone = buildSet {
+            add(gameUuid)
+            if (withExpansions) library.expansionsOf(gameUuid).forEach { add(it.uuid) }
+        }
+        return DeleteImpact(
+            sessions = library.playSessions.count { it.gameUuid in gone },
+            lendings = library.lendingRecords.count { it.gameUuid in gone },
+            unlinkedSessions = library.playSessions.count { s -> s.gameUuid !in gone && s.expansionUuids.any { it in gone } },
+        )
+    }
 
     fun gameStats(sessions: List<PlaySession>): GameStats {
         val timed = sessions.mapNotNull { it.durationMinutes }

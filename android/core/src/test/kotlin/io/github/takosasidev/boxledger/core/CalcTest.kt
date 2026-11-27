@@ -152,6 +152,46 @@ class CalcTest {
         assertEquals(manual, Ranking.autoFill(manual, WinCondition.HIGH_SCORE))
     }
 
+    @Test
+    fun スコアを全部消したら_自動で入った順位と勝者も消える() {
+        // 「10」と打って a が 1 位・勝ちになった後で、その「10」を消した所
+        val cleared = listOf(PlayResult("a", null, isWinner = true, rank = 1), PlayResult("b"))
+        assertEquals(listOf(PlayResult("a"), PlayResult("b")), Ranking.afterScoreEdit(cleared, WinCondition.HIGH_SCORE))
+        // 手動のゲームは、スコアを消しても手で入れた勝者を変えない
+        assertEquals(cleared, Ranking.afterScoreEdit(cleared, WinCondition.MANUAL))
+        // スコアが残っていれば、いつもの埋め方(スコアなしの人が混ざっても、ある人だけで順位を付ける)
+        val mixed = listOf(PlayResult("a", 3.0), PlayResult("b", null, isWinner = true, rank = 1), PlayResult("c", 5.0))
+        val low = Ranking.afterScoreEdit(mixed, WinCondition.LOW_SCORE)
+        assertEquals(listOf(1, null, 2), low.map { it.rank })
+        assertEquals(listOf(true, false, false), low.map { it.isWinner })
+    }
+
+    @Test
+    fun 削除で一緒に消える記録の数() {
+        val lib = Library(
+            games = listOf(Game("a", "本体"), Game("ex", "拡張", parentUuid = "a"), Game("b", "別のゲーム")),
+            playSessions = listOf(
+                play(1, "a", "2026-01-01", expansions = listOf("ex")),
+                play(2, "a", "2026-01-02"),
+                play(3, "ex", "2026-01-03"), // 拡張にする前に、単体のゲームとして付けた記録
+                play(4, "b", "2026-01-04"),
+            ),
+            lendingRecords = listOf(
+                LendingRecord("l1", "a", "p", today),
+                LendingRecord("l2", "ex", "p", today, returnedAt = today),
+                LendingRecord("l3", "b", "p", today),
+            ),
+        )
+        fun impact(uuid: String, withExpansions: Boolean) =
+            Stats.gameDeleteImpact(lib, uuid, withExpansions).let { Triple(it.sessions, it.lendings, it.unlinkedSessions) }
+        // 本体だけ消す(拡張は本体なしのゲームに戻す): 本体のプレイ 2 件と貸出 1 件
+        assertEquals(Triple(2, 1, 0), impact("a", withExpansions = false))
+        // 拡張も消す: 拡張に付いた分も足す
+        assertEquals(Triple(3, 2, 0), impact("a", withExpansions = true))
+        // 拡張だけ消す: 本体のプレイ記録は消えず、「使った拡張」から外れるだけ(前は「使った拡張」の分まで失われると数えていた)
+        assertEquals(Triple(1, 1, 1), impact("ex", withExpansions = false))
+    }
+
     // ---- 絞り込みと並び替え ----
 
     private val shelf = Library(

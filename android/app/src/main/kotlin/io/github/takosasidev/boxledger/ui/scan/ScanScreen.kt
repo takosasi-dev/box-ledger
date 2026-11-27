@@ -62,12 +62,15 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.takosasidev.boxledger.core.barcode.BarcodeDecoder
 import io.github.takosasidev.boxledger.core.barcode.Luma
 import io.github.takosasidev.boxledger.core.barcode.BarcodeKind
 import io.github.takosasidev.boxledger.core.model.Game
 import io.github.takosasidev.boxledger.ui.components.EmptyState
+import io.github.takosasidev.boxledger.ui.components.cameraPermissionBlocked
+import io.github.takosasidev.boxledger.ui.components.openAppSettings
 import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
 
@@ -87,8 +90,18 @@ fun ScanScreen(games: List<Game>, onBack: () -> Unit, onFound: (String) -> Unit,
     var granted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
+    /** 断られて、もう許可の画面が出ない(端末の設定から許可してもらう)。 */
+    var blocked by remember { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        granted = ok
+        blocked = !ok && cameraPermissionBlocked(context)
+    }
     LaunchedEffect(Unit) { if (!granted) permission.launch(Manifest.permission.CAMERA) }
+    // 端末の設定で許可して戻ってきたら、そのまま読み取りを始める
+    LifecycleResumeEffect(Unit) {
+        if (!granted) granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        onPauseOrDispose {}
+    }
 
     /** 読めた番号。入っている間は次の読み取りを受けない。 */
     var code by remember { mutableStateOf<String?>(null) }
@@ -124,14 +137,19 @@ fun ScanScreen(games: List<Game>, onBack: () -> Unit, onFound: (String) -> Unit,
         },
     ) { padding ->
         if (!granted) {
-            EmptyState(
-                icon = Icons.Filled.QrCodeScanner,
-                title = "カメラの許可が要ります",
-                body = "バーコードを読むためだけにカメラを使います。画像は端末の中で処理し、保存も送信もしません。",
-                modifier = Modifier.padding(padding),
-                actionLabel = "手入力で登録",
-                onAction = { onNew("") },
-            )
+            // 断られた後も、ここから頼み直せるようにする。もう許可の画面が出ないときは、端末の設定へ案内する
+            Column(Modifier.padding(padding).fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                EmptyState(
+                    icon = Icons.Filled.QrCodeScanner,
+                    title = "カメラの許可が要ります",
+                    body = "バーコードを読むためだけにカメラを使います。画像は端末の中で処理し、保存も送信もしません。" +
+                        if (blocked) "\n\n端末の設定の「権限」で、カメラを許可してください。" else "",
+                    modifier = Modifier.weight(1f),
+                    actionLabel = if (blocked) "設定を開く" else "許可する",
+                    onAction = { if (blocked) openAppSettings(context) else permission.launch(Manifest.permission.CAMERA) },
+                )
+                TextButton(onClick = { onNew("") }, modifier = Modifier.padding(bottom = 24.dp)) { Text("手入力で登録") }
+            }
         } else {
             Box(Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
                 CameraPreview(onDecoded = { if (code == null) code = it }, modifier = Modifier.fillMaxSize())

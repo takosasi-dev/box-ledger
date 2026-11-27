@@ -42,7 +42,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +77,8 @@ import io.github.takosasidev.boxledger.ui.components.PhotoBox
 import io.github.takosasidev.boxledger.ui.components.SectionHeader
 import io.github.takosasidev.boxledger.ui.components.Stars
 import io.github.takosasidev.boxledger.ui.components.SubScreen
+import io.github.takosasidev.boxledger.ui.components.cameraPermissionBlocked
+import io.github.takosasidev.boxledger.ui.components.openAppSettings
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -169,14 +173,28 @@ fun GameEditScreen(
             runCatching { takePicture.launch(captureUri) }
                 .onFailure { scope.launch { snackbar.showSnackbar("カメラのアプリを開けませんでした") } }
         } else {
-            scope.launch { snackbar.showSnackbar("撮影にはカメラの許可が要ります") }
+            // 1 回断っただけなら「撮る」でまた頼める。もう許可の画面が出ないときは「撮る」が効かなくなるので、端末の設定へ案内する
+            if (cameraPermissionBlocked(context)) {
+                scope.launch {
+                    val r = snackbar.showSnackbar("撮影にはカメラの許可が要ります。端末の設定で許可してください", actionLabel = "設定を開く", duration = SnackbarDuration.Long)
+                    if (r == SnackbarResult.ActionPerformed) openAppSettings(context)
+                }
+            } else {
+                scope.launch { snackbar.showSnackbar("撮影にはカメラの許可が要ります。もう一度「撮る」を押すと許可を求めます") }
+            }
         }
     }
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) importPhoto(uri)
     }
 
-    val save: () -> Unit = {
+    // 保存中は「保存」を受けない(素早く 2 回押すと、新しいゲームが 2 件できていた)。
+    // ボタンを押せなくするだけでは、描き直しの前に来た 2 回目を止められないので、save の中でも見る
+    var saving by remember { mutableStateOf(false) }
+
+    val save: () -> Unit = save@{
+        if (saving) return@save
+        saving = true
         val base = original ?: Game(uuid = LedgerRepository.newUuid(), title = "")
         val game = base.copy(
             title = title.trim(),
@@ -208,7 +226,7 @@ fun GameEditScreen(
         title = if (original == null) "ゲームを追加" else "ゲームを編集",
         onBack = onBack,
         snackbar = snackbar,
-        actions = { TextButton(enabled = canSave, onClick = save) { Text("保存") } },
+        actions = { TextButton(enabled = canSave && !saving, onClick = save) { Text("保存") } },
     ) { padding ->
         Column(
             Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 32.dp),

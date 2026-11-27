@@ -28,6 +28,17 @@ object Ranking {
             r.copy(rank = rank, isWinner = rank == 1)
         }
     }
+
+    /**
+     * スコアの欄を打ち直した後の埋め直し。[autoFill] と違い、スコアが 1 つも残っていなければ順位と勝者も空に戻す
+     * (最後のスコアを消したのに、さっき自動で入った「1 位・勝ち」だけが残らないように)。
+     * MANUAL のゲームは何も変えない。
+     */
+    fun afterScoreEdit(results: List<PlayResult>, condition: WinCondition): List<PlayResult> = when {
+        condition == WinCondition.MANUAL -> results
+        results.none { it.score != null } -> results.map { it.copy(rank = null, isWinner = false) }
+        else -> autoFill(results, condition)
+    }
 }
 
 data class Suggestion(val game: Game, /** 1 回も遊んでいなければ null。 */ val lastPlayed: LocalDate?, val days: Long)

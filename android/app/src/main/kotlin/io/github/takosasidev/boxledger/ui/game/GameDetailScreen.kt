@@ -396,8 +396,17 @@ fun GameDetailScreen(
             title = { Text("「${game.title}」を削除しますか") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // 一緒に消える数は、選んだ消し方(拡張も消すか)に合わせて数え直す。
+                    // 拡張を消しても本体のプレイ記録は消えない(「使った拡張」から外れるだけ)ので、別に書く
+                    val impact = Stats.gameDeleteImpact(library, game.uuid, deleteExpansions)
+                    val lost = listOfNotNull(
+                        "${impact.sessions} 件のプレイ記録".takeIf { impact.sessions > 0 },
+                        "${impact.lendings} 件の貸し出しの記録".takeIf { impact.lendings > 0 },
+                    )
                     Text(
-                        if (sessions.isEmpty()) "このゲームの記録を削除します。元に戻せません。" else "${sessions.size} 件のプレイ記録が失われます。貸し出しの記録も消えます。元に戻せません。",
+                        (if (lost.isEmpty()) "このゲームの記録を削除します。" else "${lost.joinToString("と、")}が失われます。") +
+                            (if (impact.unlinkedSessions > 0) "${impact.unlinkedSessions} 件のプレイ記録の「使った拡張」から外れます(プレイ記録は残ります)。" else "") +
+                            "元に戻せません。",
                     )
                     if (expansions.isNotEmpty()) {
                         Text("このゲームには拡張が ${expansions.size} 件あります。")

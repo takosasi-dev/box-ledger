@@ -68,8 +68,11 @@ fun LendDialog(vm: LedgerViewModel, library: Library, gameUuid: String, onDismis
     var lentAt by remember { mutableStateOf(LocalDate.now()) }
     var expected by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(7)) }
     var showPlayers by remember { mutableStateOf(false) }
+    // 「貸し出す」の 2 度押しで、同じ名前の人が 2 人できたり「もう貸出中です」が出たりしないようにする。
+    // ボタンを押せなくするだけでは、描き直しの前に来た 2 回目を止められないので、onClick の中でも見る
+    var saving by remember { mutableStateOf(false) }
     val dateOk = expected?.isBefore(lentAt) != true
-    val canSave = (newName.isNotBlank() || playerUuid != null) && dateOk
+    val canSave = (newName.isNotBlank() || playerUuid != null) && dateOk && !saving
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -102,7 +105,9 @@ fun LendDialog(vm: LedgerViewModel, library: Library, gameUuid: String, onDismis
             }
         },
         confirmButton = {
-            TextButton(enabled = canSave, onClick = {
+            TextButton(enabled = canSave, onClick = onClick@{
+                if (saving) return@onClick
+                saving = true
                 scope.launch {
                     val who = if (newName.isNotBlank()) {
                         val created = Player(LedgerRepository.newUuid(), newName.trim(), ColorChoices[library.players.size % ColorChoices.size].second.toArgb())

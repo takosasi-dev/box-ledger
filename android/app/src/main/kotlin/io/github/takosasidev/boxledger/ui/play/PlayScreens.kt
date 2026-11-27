@@ -206,12 +206,20 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
     val game = library.game(gameUuid)
     val condition = game?.winCondition ?: WinCondition.MANUAL
     val gameExpansions = library.games.filter { it.parentUuid != null && it.parentUuid == gameUuid && it.status == GameStatus.OWNED }
-    val canSave = game != null && entries.isNotEmpty() && !celebrating
+    // 保存中は「保存」を受けない(素早く 2 回押すと、同じプレイが 2 件できていた)。
+    // ボタンを押せなくするだけでは、描き直しの前に来た 2 回目を止められないので、save の中でも見る
+    var saving by remember { mutableStateOf(false) }
+    val canSave = game != null && entries.isNotEmpty() && !celebrating && !saving
 
-    /** スコアが変わったら、順位と勝者を埋め直す。 */
-    fun refill(list: List<Entry>): List<Entry> {
-        val filled = Ranking.autoFill(list.map { it.toResult() }, condition)
-        return list.zip(filled) { e, r -> if (condition == WinCondition.MANUAL) e else e.copy(isWinner = r.isWinner, rank = r.rank?.toString().orEmpty()) }
+    /**
+     * 順位と勝者を埋め直す。[scoreEdited] は、スコアの欄を打ったとき(スコアを全部消したら、自動で入った順位と勝者も空に戻す)。
+     * 参加する人を足し引きしただけのときは、スコアが 1 つも無ければ手で入れた勝者を変えない。
+     */
+    fun refill(list: List<Entry>, by: WinCondition = condition, scoreEdited: Boolean = false): List<Entry> {
+        if (by == WinCondition.MANUAL) return list
+        val results = list.map { it.toResult() }
+        val filled = if (scoreEdited) Ranking.afterScoreEdit(results, by) else Ranking.autoFill(results, by)
+        return list.zip(filled) { e, r -> e.copy(isWinner = r.isWinner, rank = r.rank?.toString().orEmpty()) }
     }
 
     fun update(playerUuid: String, change: (Entry) -> Entry) {
@@ -220,7 +228,8 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
 
     val save: () -> Unit = {
         val g = game
-        if (g != null) {
+        if (g != null && !saving) {
+            saving = true
             val session = (original ?: PlaySession(LedgerRepository.newUuid(), g.uuid, playedAt)).copy(
                 gameUuid = g.uuid,
                 playedAt = playedAt,
@@ -312,7 +321,9 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(enabled = newPlayer.isNotBlank(), onClick = {
+                    TextButton(enabled = newPlayer.isNotBlank(), onClick = onClick@{
+                        // 2 度押しの 2 回目は、名前が空になってから来る(名前の無い人ができないように)
+                        if (newPlayer.isBlank()) return@onClick
                         val created = Player(LedgerRepository.newUuid(), newPlayer.trim(), ColorChoices[library.players.size % ColorChoices.size].second.toArgb())
                         newPlayer = ""
                         scope.launch {
@@ -342,7 +353,11 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
                         Text(name, Modifier.weight(1f), maxLines = 2, style = MaterialTheme.typography.titleSmallEmphasized)
                         OutlinedTextField(
                             value = e.score,
-                            onValueChange = { text -> entries = refill(entries.map { if (it.playerUuid == e.playerUuid) it.copy(score = text.take(10)) else it }) },
+                            onValueChange = { text ->
+                                // 数字・小数点・マイナスだけを受ける(「1e99」のような指数の書き方を通すと、バックアップに 100 桁の数が出る)
+                                val typed = text.filter { it.isDigit() || it == '.' || it == '-' }.take(10)
+                                entries = refill(entries.map { if (it.playerUuid == e.playerUuid) it.copy(score = typed) else it }, scoreEdited = true)
+                            },
                             label = { Text("スコア") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -404,6 +419,8 @@ fun PlayEditScreen(vm: LedgerViewModel, library: Library, uuid: String, initialG
                                         expansions = before?.expansionUuids.orEmpty().toSet()
                                         if (before != null && entries.all { it.score.isEmpty() }) entries = before.results.map { Entry(it.playerUuid) }
                                     }
+                                    // 決め方の違うゲームに替えたら(高い方が勝ち → 低い方が勝ち など)、打ってあるスコアで順位を付け直す
+                                    if (g.winCondition != condition) entries = refill(entries, g.winCondition)
                                     showGames = false
                                 }.padding(vertical = 14.dp),
                             )

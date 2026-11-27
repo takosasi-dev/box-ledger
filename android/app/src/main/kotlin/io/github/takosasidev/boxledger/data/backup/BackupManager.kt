@@ -137,9 +137,16 @@ object BackupManager {
     }
 
     suspend fun exportToUri(context: Context, uri: Uri, password: String?) = withContext(Dispatchers.IO) {
-        val out = context.contentResolver.openOutputStream(uri, "wt")
-            ?: throw IllegalStateException("保存先を開けませんでした")
-        writeBackup(context, out, password)
+        try {
+            val out = context.contentResolver.openOutputStream(uri, "wt")
+                ?: throw IllegalStateException("保存先を開けませんでした")
+            writeBackup(context, out, password)
+        } catch (e: Exception) {
+            // 失敗したら、空や書きかけの zip を残さない(後で「バックアップがある」と取り違えないように)。
+            // 消せない保存先もあるので、消せなくても元の失敗をそのまま上に投げる
+            runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+            throw e
+        }
     }
 
     // ---- 読み取り ----------------------------------------------------------
@@ -217,9 +224,10 @@ object BackupManager {
      * 名前をそのまま使うと、アプリのフォルダの外に書かされる)。
      */
     private fun photoEntryName(entry: String?): String? {
-        val raw = entry ?: return null
+        // Windows の道具で作った zip は、区切りが「\」のことがある(photos\a.jpg)。「/」にそろえてから見る
+        val raw = entry?.replace('\\', '/') ?: return null
         if (!raw.startsWith(BackupCodec.PHOTOS_DIR) || raw.endsWith("/")) return null
-        return raw.substringAfterLast('/').substringAfterLast('\\').takeIf(BackupCodec::isSafePhotoName)
+        return raw.substringAfterLast('/').takeIf(BackupCodec::isSafePhotoName)
     }
 
     private fun extractPhotos(zip: ZipFile, staging: File): Set<String> {
@@ -299,7 +307,15 @@ object BackupManager {
 
     /** 取り込みの直前の状態を、アプリの中に zip で残す(取り消したくなったときに戻せるように)。最新の 3 件だけを残す。 */
     private suspend fun savePreimport(context: Context) {
-        writeBackupFile(context, File(preimportDir(context), "$PREIMPORT_PREFIX${stampFmt.format(Instant.now())}$ZIP_EXT"), null)
+        val file = File(preimportDir(context), "$PREIMPORT_PREFIX${stampFmt.format(Instant.now())}$ZIP_EXT")
+        try {
+            writeBackupFile(context, file, null)
+        } catch (e: Exception) {
+            // 書きかけの退避を残さない(一覧に「戻せる状態」として出て、次の退避で良い退避を押し出してしまう)。
+            // 退避に失敗したら取り込みそのものを止める(上に投げる)ので、今のデータはそのまま
+            file.delete()
+            throw e
+        }
         preimportFiles(context).drop(PREIMPORT_KEEP).forEach { it.delete() }
     }
 
