@@ -1,6 +1,7 @@
 // FR-09: 貸し出しの返却のお知らせ。書き方は収支管理アプリ(win-loss-tracker)の通知と同じ。
 package io.github.takosasidev.boxledger.notify
 
+import android.os.Build
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.NotificationChannel
@@ -67,9 +68,11 @@ object DailyCheck {
         if (!manager.areNotificationsEnabled()) return false
 
         // API 26 以上はチャンネルが要る。同じ ID で作り直しても、利用者が変えた設定は壊れない
-        context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
-            NotificationChannel(CHANNEL, "返却のお知らせ", NotificationManager.IMPORTANCE_DEFAULT),
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL, "返却のお知らせ", NotificationManager.IMPORTANCE_DEFAULT),
+            )
+        }
         // requestCode を通知ごとに変える。PendingIntent の同一判定は extras を見ないので、
         // 同じ番号だと後の通知が前の通知の行き先(ゲーム)を上書きする
         val pending = PendingIntent.getActivity(
